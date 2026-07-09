@@ -1,0 +1,9 @@
+# Unified Processor .dockerignore
+
+target/
+.env
+.env.*
+__pycache__/
+.venv/
+.git/
+logs/

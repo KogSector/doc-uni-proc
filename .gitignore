@@ -1,0 +1,15 @@
+# Rust Service .gitignore
+/target
+**/*.rs.bk
+Cargo.lock
+.env
+.env.*
+.env.map
+.env.secret
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+chunks/
+logs/

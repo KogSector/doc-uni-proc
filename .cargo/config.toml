@@ -1,0 +1,7 @@
+# =============================================================================
+# Unified Processor - Cargo Configuration
+# =============================================================================
+
+# Set environment variable for PyO3 compatibility with Python 3.14
+[env]
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY = "1"
