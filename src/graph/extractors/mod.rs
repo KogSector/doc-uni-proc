@@ -20,7 +20,6 @@ mod hierarchical;
 use crate::core::chunking::Chunk;
 use crate::graph::models::ChunkRelationship;
 
-pub use crate::processors::codebase::graph::CodeExtractor;
 pub use crate::processors::documents::graph::DocumentExtractor;
 pub use crate::processors::web::graph::WebExtractor;
 
@@ -52,7 +51,6 @@ pub trait SourceRelationshipExtractor: Send + Sync {
 /// relationship discovery is delegated to `fast-fetcher`.
 pub struct SourceRelationshipRouter {
     hierarchical: HierarchicalExtractor,
-    code: CodeExtractor,
     document: DocumentExtractor,
     web: WebExtractor,
 }
@@ -67,7 +65,6 @@ impl SourceRelationshipRouter {
     pub fn new() -> Self {
         Self {
             hierarchical: HierarchicalExtractor::new(),
-            code: CodeExtractor::new(),
             document: DocumentExtractor::new(),
             web: WebExtractor::new(),
         }
@@ -85,7 +82,6 @@ impl SourceRelationshipRouter {
         relationships.extend(self.hierarchical.extract(chunks));
 
         // Source-specific structural extraction (same-source only)
-        relationships.extend(self.code.extract(chunks));
         relationships.extend(self.document.extract(chunks));
         relationships.extend(self.web.extract(chunks));
 

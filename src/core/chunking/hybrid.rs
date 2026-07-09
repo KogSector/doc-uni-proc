@@ -246,16 +246,6 @@ impl ChunkingStrategy for HybridChunker {
         let chunk_type = self.determine_chunk_type(filename);
         
         let mut final_chunks = Vec::new();
-
-        if let ChunkType::Code { language, .. } = &chunk_type {
-            let ast_chunks = crate::processors::codebase::chunking::extract_ast_chunks(
-                source_id,
-                filename,
-                content,
-                language,
-            );
-            final_chunks.extend(ast_chunks);
-        }
         
         let raw_chunks = self.chunk_content(content, config);
         let total_chunks = raw_chunks.len();

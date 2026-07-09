@@ -688,10 +688,9 @@ impl GraphSync {
             chunks.push(chunk);
         }
 
-        tracing::info!("GraphSync: Fetched {} code chunks for cross-file resolution", chunks.len());
+        tracing::info!("GraphSync: Fetched {} chunks for post-processing", chunks.len());
 
-        let symbol_index = crate::processors::codebase::symbol::SymbolIndex::build(&chunks);
-        let mut symbol_rels = symbol_index.resolve_cross_file_references(&chunks);
+        let mut symbol_rels: Vec<crate::graph::models::ChunkRelationship> = Vec::new();
 
         // Fallback: Connect chunks intelligently
         use std::collections::{HashSet, HashMap};

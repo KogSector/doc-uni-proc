@@ -8,7 +8,7 @@
 
 use crate::core::{Config, Result, ProcessorError};
 use crate::processors::documents::DocumentParser;
-use crate::processors::codebase::CodeAnalyzer;
+use crate::processors::web::{WebScraper, CrawlConfig, WebPageData};
 
 use crate::infra::storage::{PostgresStorage, GraphSync};
 use crate::graph::extractors::{SourceRelationshipRouter, SemanticExtractor};
@@ -47,7 +47,7 @@ pub struct ChunkData {
 #[serde(tag = "type")]
 pub enum ContentType {
     Document(DocumentData),
-    Code(CodeData),
+    Web(WebPageData),
 }
 
 
@@ -61,15 +61,7 @@ pub struct DocumentData {
     pub processor: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodeData {
-    pub language: String,
-    pub functions: Vec<CodeFunction>,
-    pub classes: Vec<CodeClass>,
-    pub imports: Vec<String>,
-    pub metrics: CodeMetrics,
-    pub ast_summary: AstSummary,
-}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessingResult {
@@ -149,17 +141,7 @@ pub struct AstSummary {
 
 // ─── Kafka message types ────────────────────────────────────────────────────
 
-/// Message consumed from `repo-processing.requests`
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RepoProcessingRequest {
-    pub request_id: String,
-    pub user_id: String,
-    pub repo_url: String,
-    pub repo_type: String, // github, gitlab, bitbucket
-    pub branch: String,
-    pub credentials: Option<String>, // encrypted OAuth token
-    pub processing_mode: String, // full_initial
-}
+
 
 /// Message consumed from `doc-processing.requests`
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +168,20 @@ pub struct RepoUpdateRequest {
     pub provider: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebProcessingRequest {
+    pub request_id: String,
+    pub user_id: String,
+    pub url: String,
+    pub crawl: bool,
+    pub max_pages: Option<usize>,
+    pub max_depth: Option<usize>,
+    pub crawl_delay_ms: Option<u64>,
+    pub include_css: Option<bool>,
+    pub include_js: Option<bool>,
+    pub metadata: HashMap<String, String>,
+}
+
 
 
 // ─── Orchestrator ───────────────────────────────────────────────────────────
@@ -193,7 +189,7 @@ pub struct RepoUpdateRequest {
 pub struct UnifiedProcessor {
     config: Config,
     pub document_parser: DocumentParser,
-    code_analyzer: CodeAnalyzer,
+    pub web_scraper: WebScraper,
     pub postgres_storage: Arc<PostgresStorage>,
     graph_sync: Arc<GraphSync>,
     chunker: crate::core::chunking::HybridChunker,
@@ -216,7 +212,7 @@ impl UnifiedProcessor {
     ) -> Result<Self> {
         // Initialize components
         let document_parser = DocumentParser::new(true)?;
-        let code_analyzer = CodeAnalyzer::new()?;
+        let web_scraper = WebScraper::new();
         
         let postgres_storage = Arc::new(
             PostgresStorage::new(&config.database.postgres_url).await?
@@ -238,7 +234,7 @@ impl UnifiedProcessor {
         Ok(Self {
             config,
             document_parser,
-            code_analyzer,
+            web_scraper,
             postgres_storage,
             graph_sync,
             chunker,
@@ -523,65 +519,7 @@ impl UnifiedProcessor {
     // ─── Legacy file processing (kept for gRPC health checks & direct calls) ──
     
     /// Process a single file (used by gRPC endpoint for backward compatibility)
-    pub async fn process_file(&self, content: &str, is_base64: bool, filename: &str, source_id: &str, repo_name: &str, user_id: &str) -> Result<ProcessedData> {
-        let start_time = std::time::Instant::now();
-        let file_id = Uuid::new_v4();
-        
-        let content_type = self.detect_content_type(filename);
-        
-        let (processing_result, mut chunks) = match content_type {
-            ContentType::Document(_) => {
-                let (res, doc_chunks) = self.process_document(content, is_base64, filename, source_id).await;
-                tracing::info!("Finished process_document for {} with {} chunks", filename, doc_chunks.len());
-                (res, doc_chunks)
-            },
-            ContentType::Code(_) => {
-                let text = if is_base64 {
-                    use base64::{Engine as _, engine::general_purpose::STANDARD};
-                    String::from_utf8(STANDARD.decode(content).unwrap_or_default()).unwrap_or_default()
-                } else {
-                    content.to_string()
-                };
-                let res = self.process_code(&text, filename).await;
-                let chunks = self.generate_chunks(&text, filename, source_id).await?;
-                (res, chunks)
-            },
-
-        };
-        
-        // --- NEW LOGIC: Diff against snapshot ---
-        let mut chunks_to_delete_from_db = Vec::new();
-        if let Ok(snapshots) = self.postgres_storage.get_chunk_snapshots(source_id, filename).await {
-            let mut snapshot_map = std::collections::HashMap::new();
-            for s in snapshots {
-                snapshot_map.insert(s.chunk_key.clone(), s);
-            }
-            
-            let mut new_keys = std::collections::HashSet::new();
-            for chunk in chunks.iter_mut() {
-                new_keys.insert(chunk.chunk_key.clone());
-                if let Some(snapshot) = snapshot_map.get(&chunk.chunk_key) {
-                    if chunk.chunk_hash == snapshot.chunk_hash {
-                        chunk.is_dirty = false;
-                        tracing::debug!("Chunk {} is clean (hash match)", chunk.chunk_key);
-                    } else {
-                        tracing::debug!("Chunk {} is dirty (hash mismatch)", chunk.chunk_key);
-                    }
-                } else {
-                    tracing::debug!("Chunk {} is new", chunk.chunk_key);
-                }
-            }
-            
-            // Find deleted chunks
-            for (old_key, _) in snapshot_map {
-                if !new_keys.contains(&old_key) {
-                    tracing::debug!("Chunk {} was deleted", old_key);
-                    chunks_to_delete_from_db.push(format!("{}|{}", old_key, filename));
-                    // Mark as tombstone in postgres
-                    let _ = self.postgres_storage.mark_chunks_deleted(source_id, &[old_key]).await;
-                }
-            }
-        }
+    
         
         if !chunks_to_delete_from_db.is_empty() {
             tracing::info!("Deleting {} orphaned chunks from FalkorDB", chunks_to_delete_from_db.len());
@@ -756,13 +694,13 @@ impl UnifiedProcessor {
     async fn store_file_metadata(&self, data: &ProcessedData, _content: &str, user_id: &str) -> Result<()> {
         let file_type = match &data.content_type {
             ContentType::Document(_) => "document",
-            ContentType::Code(_) => "code",
+            
             ContentType::Web(_) => "web",
         };
         
         let language = match &data.content_type {
             ContentType::Document(_) => None,
-            ContentType::Code(code_data) => Some(code_data.language.clone()),
+            
             ContentType::Web(_) => None,
         };
         
