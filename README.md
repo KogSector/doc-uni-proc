@@ -26,7 +26,7 @@ The Unified Processor handles all file processing tasks for the ConFuse platform
 - **PostgreSQL Integration**: Track processing jobs and file metadata
 - **Multi-format Support**: Python, JavaScript, TypeScript, Java, Go, Rust, PDF, Word, Markdown
 
-## Quick Start
+## How to run the microservice
 
 ### Prerequisites
 
@@ -59,7 +59,7 @@ export FALKORDB_PASSWORD="your-password"
 export PORT=8090
 ```
 
-### Running
+### How to run the microservice
 
 ```bash
 # Development
