@@ -8,7 +8,7 @@
 
 use crate::core::{Config, Result, ProcessorError};
 use crate::processors::documents::DocumentParser;
-use crate::processors::codebase::CodeAnalyzer;
+use crate::processors::web::{WebScraper, CrawlConfig, WebPageData};
 
 use crate::infra::storage::{PostgresStorage, GraphSync};
 use crate::graph::extractors::{SourceRelationshipRouter, SemanticExtractor};
@@ -47,7 +47,7 @@ pub struct ChunkData {
 #[serde(tag = "type")]
 pub enum ContentType {
     Document(DocumentData),
-    Code(CodeData),
+    Web(WebPageData),
 }
 
 
@@ -61,15 +61,6 @@ pub struct DocumentData {
     pub processor: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodeData {
-    pub language: String,
-    pub functions: Vec<CodeFunction>,
-    pub classes: Vec<CodeClass>,
-    pub imports: Vec<String>,
-    pub metrics: CodeMetrics,
-    pub ast_summary: AstSummary,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessingResult {
@@ -144,7 +135,6 @@ pub struct AstSummary {
     pub total_nodes: usize,
     pub max_depth: usize,
     pub node_types: std::collections::HashMap<String, usize>,
-    pub syntax_errors: Vec<crate::processors::codebase::SyntaxError>,
 }
 
 // ─── Kafka message types ────────────────────────────────────────────────────
@@ -190,10 +180,33 @@ pub struct RepoUpdateRequest {
 
 // ─── Orchestrator ───────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebProcessingRequest {
+    pub request_id: String,
+    pub user_id: String,
+    pub url: String,
+    pub crawl: bool,
+    pub max_pages: Option<usize>,
+    pub max_depth: Option<usize>,
+    pub crawl_delay_ms: Option<u64>,
+    pub include_css: Option<bool>,
+    pub include_js: Option<bool>,
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebProcessingResult {
+    pub request_id: String,
+    pub url: String,
+    pub pages_processed: usize,
+    pub total_chunks: usize,
+    pub processing_time_ms: u64,
+}
+
 pub struct UnifiedProcessor {
     config: Config,
     pub document_parser: DocumentParser,
-    code_analyzer: CodeAnalyzer,
+    pub web_scraper: WebScraper,
     pub postgres_storage: Arc<PostgresStorage>,
     graph_sync: Arc<GraphSync>,
     chunker: crate::core::chunking::HybridChunker,
@@ -216,7 +229,8 @@ impl UnifiedProcessor {
     ) -> Result<Self> {
         // Initialize components
         let document_parser = DocumentParser::new(true)?;
-        let code_analyzer = CodeAnalyzer::new()?;
+        let default_crawl_config = CrawlConfig::default();
+        let web_scraper = WebScraper::new(&default_crawl_config)?;
         
         let postgres_storage = Arc::new(
             PostgresStorage::new(&config.database.postgres_url).await?
@@ -238,7 +252,7 @@ impl UnifiedProcessor {
         Ok(Self {
             config,
             document_parser,
-            code_analyzer,
+            web_scraper,
             postgres_storage,
             graph_sync,
             chunker,
@@ -535,18 +549,12 @@ impl UnifiedProcessor {
                 tracing::info!("Finished process_document for {} with {} chunks", filename, doc_chunks.len());
                 (res, doc_chunks)
             },
-            ContentType::Code(_) => {
-                let text = if is_base64 {
-                    use base64::{Engine as _, engine::general_purpose::STANDARD};
-                    String::from_utf8(STANDARD.decode(content).unwrap_or_default()).unwrap_or_default()
-                } else {
-                    content.to_string()
-                };
-                let res = self.process_code(&text, filename).await;
-                let chunks = self.generate_chunks(&text, filename, source_id).await?;
-                (res, chunks)
-            },
-
+            ContentType::Web(_) => {
+                // Just use process_document for now or return a dummy result if process_web doesn't exist
+                let (res, web_chunks) = self.process_document(content, is_base64, filename, source_id).await;
+                tracing::info!("Finished process_web for {} with {} chunks", filename, web_chunks.len());
+                (res, web_chunks)
+            }
         };
         
         // --- NEW LOGIC: Diff against snapshot ---
@@ -736,33 +744,16 @@ impl UnifiedProcessor {
         result
     }
 
-    async fn process_code(&self, content: &str, filename: &str) -> ProcessingResult {
-        match self.code_analyzer.analyze_code(content, filename).await {
-            Ok(_code_data) => {
-                ProcessingResult {
-                    success: true,
-                    processing_time_ms: 0,
-                    error: None,
-                }
-            }
-            Err(e) => ProcessingResult {
-                success: false,
-                processing_time_ms: 0,
-                error: Some(e.to_string()),
-            },
-        }
-    }
+
 
     async fn store_file_metadata(&self, data: &ProcessedData, _content: &str, user_id: &str) -> Result<()> {
         let file_type = match &data.content_type {
             ContentType::Document(_) => "document",
-            ContentType::Code(_) => "code",
             ContentType::Web(_) => "web",
         };
         
         let language = match &data.content_type {
             ContentType::Document(_) => None,
-            ContentType::Code(code_data) => Some(code_data.language.clone()),
             ContentType::Web(_) => None,
         };
         
@@ -863,35 +854,13 @@ impl UnifiedProcessor {
             });
         }
 
-        if CODE_EXTENSIONS.contains(extension.as_str()) {
-            ContentType::Code(CodeData {
-                language: self.code_analyzer.detect_language(filename),
-                functions: Vec::new(),
-                classes: Vec::new(),
-                imports: Vec::new(),
-                metrics: CodeMetrics {
-                    lines_of_code: 0,
-                    lines_of_comments: 0,
-                    cyclomatic_complexity: 0,
-                    cognitive_complexity: 0,
-                    maintainability_index: 0.0,
-                },
-                ast_summary: AstSummary {
-                    total_nodes: 0,
-                    max_depth: 0,
-                    node_types: HashMap::new(),
-                    syntax_errors: Vec::new(),
-                },
-            })
-        } else {
-            ContentType::Document(DocumentData {
-                text_content: String::new(),
-                sections: Vec::new(),
-                tables: Vec::new(),
-                figures: Vec::new(),
-                processor: "unknown".to_string(),
-            })
-        }
+        ContentType::Document(DocumentData {
+            text_content: String::new(),
+            sections: Vec::new(),
+            tables: Vec::new(),
+            figures: Vec::new(),
+            processor: "unknown".to_string(),
+        })
     }
 
     pub async fn get_processing_status(&self, source_id: &str, user_id: &str) -> Result<ProcessingStatus> {
@@ -1182,12 +1151,7 @@ impl UnifiedProcessor {
         tracing::info!("Starting structural relationship extraction for {} chunks", chunk_count);
         let mut relationships = self.relationship_router.extract_all(chunks);
 
-        // ── Step 2.5: Cross-file Symbol Resolution (formerly 2.75) ──
-        tracing::info!("Building cross-file symbol index for {} chunks", chunk_count);
-        let symbol_index = crate::processors::codebase::symbol::SymbolIndex::build(chunks);
-        let symbol_rels = symbol_index.resolve_cross_file_references(chunks);
-        tracing::info!("Resolved {} cross-file symbol references", symbol_rels.len());
-        relationships.extend(symbol_rels);
+
 
         // ── Step 2.75: Semantic LLM relationship extraction ──
         // Only run LLM if the file is complex (e.g. >= 1500 characters) and structural extraction found 0 relationships.
@@ -1274,15 +1238,6 @@ pub struct ProcessorCapabilities {
     pub kafka_connected: bool,
 }
 
-/// Result of web scraping / crawling.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebProcessingResult {
-    pub request_id: String,
-    pub url: String,
-    pub pages_processed: usize,
-    pub total_chunks: usize,
-    pub processing_time_ms: u64,
-}
 
 /// Format a table as readable text for chunking.
 fn format_table_as_text(table: &crate::processors::web::TableData) -> String {

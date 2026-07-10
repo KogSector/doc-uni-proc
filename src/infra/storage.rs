@@ -690,16 +690,12 @@ impl GraphSync {
 
         tracing::info!("GraphSync: Fetched {} code chunks for cross-file resolution", chunks.len());
 
-        let symbol_index = crate::processors::codebase::symbol::SymbolIndex::build(&chunks);
-        let mut symbol_rels = symbol_index.resolve_cross_file_references(&chunks);
+        let mut symbol_rels = Vec::new();
 
         // Fallback: Connect chunks intelligently
         use std::collections::{HashSet, HashMap};
         let mut connected_chunks = HashSet::new();
-        for rel in &symbol_rels {
-            connected_chunks.insert(rel.source_chunk_id);
-            connected_chunks.insert(rel.target_chunk_id);
-        }
+        // Removed symbol_rels original loop since it's now empty before here
 
         // Group by file path (which is stored in chunk's metadata or we can extract from composite ID)
         // Wait, the dummy chunk's `file_path` holds the composite ID `uuid|actual_file_path`.
