@@ -24,8 +24,6 @@ tonic = { version = "0.11", features = ["transport", "codegen", "prost"] }
 prost = "0.12"
 prost-types = "0.12"
 
-# Kafka for event streaming
-rdkafka = { version = "0.39.0", features = ["cmake-build", "ssl-vendored"] }
 
 # FalkorDB via Redis protocol
 redis = { version = "0.25", features = ["tokio-comp", "tokio-rustls-comp"] }
@@ -132,6 +130,4 @@ codegen-units = 1
 opt-level = 3
 
 [features]
-default = ["kafka"]
-# kafka: enables Kafka event publishing via rdkafka.
-kafka = []
+default = []

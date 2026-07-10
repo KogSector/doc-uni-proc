@@ -13,8 +13,8 @@ use unified_processor_lib::{
     core::Config,
     core::orchestrator::UnifiedProcessor,
     infra::storage::create_falkordb_storage,
-    infra::events::check_kafka_health,
 };
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -49,9 +49,7 @@ async fn main() -> anyhow::Result<()> {
         "Starting unified-processor on {}",
         addr
     );
-// Check Kafka health before starting (Kafka is required)
-    check_kafka_health().await?;
-    tracing::info!("Kafka on Aiven is initialized");
+
 
     // 
     // Initialize FalkorDB storage (Redis protocol, port 6379)
@@ -70,17 +68,7 @@ async fn main() -> anyhow::Result<()> {
         falkordb_storage.clone(),
     ).await?);
 
-    #[cfg(feature = "kafka")]
-    {
-        let consumer_processor = processor.clone();
-        tokio::spawn(async move {
-            tracing::info!("Initializing Kafka event consumer...");
-            let consumer = unified_processor_lib::graph::consumer::UnifiedEventConsumer::new(consumer_processor);
-            if let Err(e) = consumer.start().await {
-                tracing::error!("Kafka consumer failed to start: {}", e);
-            }
-        });
-    }
+
 
     let auth_layer = unified_processor_lib::infra::middleware::AxumAuthLayer::with_grpc(
         config.server.auth_middleware_url.clone(),
