@@ -21,7 +21,6 @@ use crate::core::chunking::Chunk;
 use crate::graph::models::ChunkRelationship;
 
 pub use crate::processors::documents::graph::DocumentExtractor;
-pub use crate::processors::web::graph::WebExtractor;
 
 pub use semantic::SemanticExtractor;
 use hierarchical::HierarchicalExtractor;
@@ -52,7 +51,6 @@ pub trait SourceRelationshipExtractor: Send + Sync {
 pub struct SourceRelationshipRouter {
     hierarchical: HierarchicalExtractor,
     document: DocumentExtractor,
-    web: WebExtractor,
 }
 
 impl Default for SourceRelationshipRouter {
@@ -66,7 +64,6 @@ impl SourceRelationshipRouter {
         Self {
             hierarchical: HierarchicalExtractor::new(),
             document: DocumentExtractor::new(),
-            web: WebExtractor::new(),
         }
     }
 
@@ -83,7 +80,6 @@ impl SourceRelationshipRouter {
 
         // Source-specific structural extraction (same-source only)
         relationships.extend(self.document.extract(chunks));
-        relationships.extend(self.web.extract(chunks));
 
         relationships
     }

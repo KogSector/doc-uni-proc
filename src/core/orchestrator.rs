@@ -8,7 +8,6 @@
 
 use crate::core::{Config, Result, ProcessorError};
 use crate::processors::documents::DocumentParser;
-use crate::processors::web::{WebScraper, CrawlConfig, WebPageData};
 
 use crate::infra::storage::{PostgresStorage, GraphSync};
 use crate::graph::extractors::{SourceRelationshipRouter, SemanticExtractor};
@@ -47,7 +46,6 @@ pub struct ChunkData {
 #[serde(tag = "type")]
 pub enum ContentType {
     Document(DocumentData),
-    Web(WebPageData),
 }
 
 
@@ -207,7 +205,6 @@ pub struct WebProcessingResult {
 pub struct UnifiedProcessor {
     config: Config,
     pub document_parser: DocumentParser,
-    pub web_scraper: WebScraper,
     pub postgres_storage: Arc<PostgresStorage>,
     graph_sync: Arc<GraphSync>,
     chunker: crate::core::chunking::HybridChunker,
@@ -230,8 +227,6 @@ impl UnifiedProcessor {
     ) -> Result<Self> {
         // Initialize components
         let document_parser = DocumentParser::new(true)?;
-        let default_crawl_config = CrawlConfig::default();
-        let web_scraper = WebScraper::new(&default_crawl_config)?;
         
         let postgres_storage = Arc::new(
             PostgresStorage::new(&config.database.postgres_url).await?
@@ -253,7 +248,6 @@ impl UnifiedProcessor {
         Ok(Self {
             config,
             document_parser,
-            web_scraper,
             postgres_storage,
             graph_sync,
             chunker,
@@ -267,273 +261,7 @@ impl UnifiedProcessor {
     }
     
 
-    
-    /// Handle a document processing request from gRPC
-    /// Flow: download doc → structure analysis → chunk → store chunks → cleanup
-    pub async fn handle_web_processing(&self, request: WebProcessingRequest) -> Result<WebProcessingResult> {
-        let start = std::time::Instant::now();
 
-        tracing::info!(
-            request_id = %request.request_id,
-            url = %request.url,
-            crawl = request.crawl,
-            "Starting web processing"
-        );
-
-        if !self.config.web.enabled {
-            return Err(ProcessorError::InfraError("Web scraping is disabled".to_string()));
-        }
-
-        // Build CrawlConfig from request overrides + global defaults
-        let crawl_config = CrawlConfig {
-            max_pages: request.max_pages.unwrap_or(self.config.web.max_pages),
-            max_depth: request.max_depth.unwrap_or(self.config.web.max_depth),
-            crawl_delay_ms: request.crawl_delay_ms.unwrap_or(self.config.web.crawl_delay_ms),
-            include_css: request.include_css.unwrap_or(true),
-            include_js: request.include_js.unwrap_or(true),
-            user_agent: self.config.web.user_agent.clone(),
-            request_timeout_secs: self.config.web.request_timeout_secs,
-            ..CrawlConfig::default()
-        };
-
-        // Scrape or crawl
-        let pages: Vec<WebPageData> = if request.crawl {
-            let site_ctx = self.web_scraper
-                .crawl_website(&request.url, &crawl_config, &request.request_id)
-                .await
-                .map_err(|e| ProcessorError::InfraError(format!("Website crawl failed: {}", e)))?;
-            site_ctx.pages
-        } else {
-            let page = self.web_scraper
-                .scrape_url(&request.url, &crawl_config)
-                .await
-                .map_err(|e| ProcessorError::InfraError(format!("URL scrape failed: {}", e)))?;
-            vec![page]
-        };
-
-        // Process each page through the chunking → embedding → storage pipeline
-        let total_pages = pages.len();
-        let mut total_chunks = 0usize;
-        let source_id = format!("web:{}", request.url);
-
-        for (page_idx, page) in pages.iter().enumerate() {
-            match self.process_web_page(page, &source_id, &request.request_id, page_idx, &request.user_id).await {
-                Ok(chunk_count) => {
-                    total_chunks += chunk_count;
-                    tracing::info!(
-                        request_id = %request.request_id,
-                        page_idx,
-                        url = %page.url,
-                        chunks = chunk_count,
-                        "Web page processed"
-                    );
-                }
-                Err(e) => {
-                    tracing::error!(
-                        request_id = %request.request_id,
-                        url = %page.url,
-                        error = %e,
-                        "Failed to process web page, continuing"
-                    );
-                }
-            }
-        }
-
-        // Trigger graph sync
-        if let Err(e) = self.trigger_graph_sync(&source_id, &request.user_id).await {
-            tracing::warn!("Failed to trigger graph sync for {}: {}", source_id, e);
-        }
-
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-
-        tracing::info!(
-            request_id = %request.request_id,
-            url = %request.url,
-            total_pages,
-            total_chunks,
-            elapsed_ms,
-            "Web processing completed"
-        );
-
-        Ok(WebProcessingResult {
-            request_id: request.request_id.clone(),
-            url: request.url.clone(),
-            pages_processed: total_pages,
-            total_chunks,
-            processing_time_ms: elapsed_ms,
-        })
-    }
-
-    /// Get chunk content by chunk ID.
-    /// First checks the in-memory cache, then falls back to FalkorDB.
-    pub async fn get_chunk_content(&self, chunk_id: &str, user_id: &str) -> Result<String> {
-        // Check in-memory cache first
-        {
-            let cache = self.chunk_content_cache.lock().unwrap_or_else(|p| p.into_inner());
-            if let Some(content) = cache.get(chunk_id) {
-                return Ok(content.clone());
-            }
-        }
-        
-        tracing::warn!("Chunk not found in in-memory cache, falling back to FalkorDB: {}", chunk_id);
-        let user_graph = self.falkordb_storage.with_user_graph(user_id);
-        
-        match user_graph.get_chunk_content(chunk_id).await {
-            Ok(Some(content)) => Ok(content),
-            Ok(None) => Err(ProcessorError::NotFound(format!("Chunk not found in FalkorDB: {}", chunk_id))),
-            Err(e) => Err(ProcessorError::DatabaseError(format!("Failed to get chunk from FalkorDB: {}", e))),
-        }
-    }
-
-
-    ///   - Table chunks (if present)
-    async fn process_web_page(
-        &self,
-        page: &WebPageData,
-        source_id: &str,
-        _request_id: &str,
-        _page_idx: usize,
-        user_id: &str,
-    ) -> Result<usize> {
-        use crate::core::chunking::{Chunk, ChunkType, ChunkLevel, WebSemanticType};
-
-        let mut all_chunks: Vec<Chunk> = Vec::new();
-
-        // 1. Page overview chunk (title + description + heading outline)
-        let heading_outline = page.headings.iter()
-            .map(|h| format!("{} {}", "#".repeat(h.level as usize), h.text))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let overview = format!(
-            "# {}\n\nURL: {}\nDomain: {}\n{}\n\n## Heading Structure\n{}",
-            page.title,
-            page.url,
-            page.domain,
-            page.description.as_deref().unwrap_or(""),
-            heading_outline
-        );
-
-        all_chunks.push(Chunk::new(
-            source_id.to_string(),
-            page.url.clone(),
-            overview,
-            ChunkType::Web {
-                url: page.url.clone(),
-                semantic_type: WebSemanticType::PageOverview,
-            },
-            ChunkLevel::Overview,
-        ).with_confidence(0.95));
-
-        // 2. Metadata chunk (Open Graph, JSON-LD, keywords)
-        if !page.metadata.og_properties.is_empty()
-            || !page.structured_data.is_empty()
-            || !page.metadata.keywords.is_empty()
-        {
-            let meta_content = serde_json::json!({
-                "og": page.metadata.og_properties,
-                "keywords": page.metadata.keywords,
-                "structured_data": page.structured_data,
-                "language": page.metadata.language,
-                "author": page.metadata.author,
-            }).to_string();
-
-            all_chunks.push(Chunk::new(
-                source_id.to_string(),
-                page.url.clone(),
-                meta_content,
-                ChunkType::Web {
-                    url: page.url.clone(),
-                    semantic_type: WebSemanticType::Metadata,
-                },
-                ChunkLevel::Overview,
-            ).with_confidence(0.9));
-        }
-
-        // 3. Main content — chunk via the standard pipeline (paragraph splitting)
-        if !page.main_content.is_empty() {
-            let content_chunks = self.generate_web_content_chunks(
-                &page.main_content,
-                &page.url,
-                source_id,
-            ).await?;
-            all_chunks.extend(content_chunks);
-        }
-
-        // 4. Table chunks
-        for table in &page.tables {
-            let table_text = format_table_as_text(table);
-            if !table_text.trim().is_empty() {
-                all_chunks.push(Chunk::new(
-                    source_id.to_string(),
-                    page.url.clone(),
-                    table_text,
-                    ChunkType::Web {
-                        url: page.url.clone(),
-                        semantic_type: WebSemanticType::Table,
-                    },
-                    ChunkLevel::Micro,
-                ).with_confidence(0.85));
-            }
-        }
-
-        // 5. CSS chunks (only if content was captured)
-        for css in &page.css_resources {
-            if css.is_inline && !css.content.trim().is_empty() {
-                all_chunks.push(Chunk::new(
-                    source_id.to_string(),
-                    css.source_url.clone().unwrap_or_else(|| page.url.clone()),
-                    css.content.clone(),
-                    ChunkType::Web {
-                        url: page.url.clone(),
-                        semantic_type: WebSemanticType::StyleSheet,
-                    },
-                    ChunkLevel::Semantic,
-                ).with_confidence(0.7));
-            }
-        }
-
-        let chunk_count = all_chunks.len();
-
-        // Send through store + publish pipeline
-        if let Err(e) = self.store_and_publish_chunks(all_chunks, source_id, None, user_id).await {
-            tracing::error!(
-                url = %page.url,
-                error = %e,
-                "Failed to store and publish web page chunks"
-            );
-        }
-
-        Ok(chunk_count)
-    }
-
-    /// Generate content chunks from web page text.
-    ///
-    /// Uses the standard HybridChunker but with Web-typed fallback.
-    async fn generate_web_content_chunks(
-        &self,
-        content: &str,
-        url: &str,
-        source_id: &str,
-    ) -> Result<Vec<crate::core::chunking::Chunk>> {
-        use crate::core::chunking::{ChunkType, WebSemanticType};
-        use crate::core::chunking::ChunkingStrategy;
-
-        let config = crate::core::chunking::ChunkingConfig::from_env();
-
-        let mut result = self.chunker.process(content, url, source_id, &config)
-            .await
-            .map_err(|e| ProcessorError::InfraError(format!("Chunking failed: {}", e)))?;
-            
-        // Re-tag chunks as Web type (the HybridChunker may assign Document type)
-        for chunk in &mut result.chunks {
-            chunk.chunk_type = ChunkType::Web {
-                url: url.to_string(),
-                semantic_type: WebSemanticType::Paragraph,
-            };
-        }
-        Ok(result.chunks)
-    }
 
     // ─── Legacy file processing (kept for gRPC health checks & direct calls) ──
     
@@ -549,8 +277,7 @@ impl UnifiedProcessor {
                 let (res, doc_chunks) = self.process_document(content, is_base64, filename, source_id).await;
                 tracing::info!("Finished process_document for {} with {} chunks", filename, doc_chunks.len());
                 (res, doc_chunks)
-            },
-            ContentType::Web(_) => return Err(ProcessorError::UnsupportedFileType("Web processing not supported via process_file".to_string())),
+            }
         };
         
         // --- NEW LOGIC: Diff against snapshot ---
@@ -745,12 +472,10 @@ impl UnifiedProcessor {
     async fn store_file_metadata(&self, data: &ProcessedData, _content: &str, user_id: &str) -> Result<()> {
         let file_type = match &data.content_type {
             ContentType::Document(_) => "document",
-            ContentType::Web(_) => "web",
         };
         
         let language = match &data.content_type {
             ContentType::Document(_) => None,
-            ContentType::Web(_) => None,
         };
         
         let pg_metadata = crate::infra::storage::FileMetadata {
@@ -1158,24 +883,7 @@ pub struct ProcessorCapabilities {
 }
 
 
-/// Format a table as readable text for chunking.
-fn format_table_as_text(table: &crate::processors::web::TableData) -> String {
-    let mut out = String::new();
-    if let Some(caption) = &table.caption {
-        out.push_str(&format!("Table: {}\n", caption));
-    }
-    if !table.headers.is_empty() {
-        out.push_str(&table.headers.join(" | "));
-        out.push('\n');
-        out.push_str(&table.headers.iter().map(|h| "-".repeat(h.len().max(3))).collect::<Vec<_>>().join("-|-"));
-        out.push('\n');
-    }
-    for row in &table.rows {
-        out.push_str(&row.join(" | "));
-        out.push('\n');
-    }
-    out
-}
+
 /// Helper: detect language from file path
 /// DSA: O(1) static HashMap lookup, zero per-call allocation.
 #[allow(dead_code)]

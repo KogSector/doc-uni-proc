@@ -11,7 +11,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
-use crate::core::orchestrator::{UnifiedProcessor, WebProcessingRequest, WebProcessingResult};
+use crate::core::orchestrator::UnifiedProcessor;
 use crate::infra::middleware::AxumAuthLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -31,9 +31,6 @@ pub fn build_app_router(
         .route("/api/v1/documents/process", post(process_document))
         .route("/api/v1/documents/batch", post(batch_process_documents))
 
-        // Web scraping / crawling endpoints
-        .route("/api/v1/web/scrape", post(scrape_url))
-        .route("/api/v1/web/crawl", post(crawl_website))
         // Integration endpoints
         .route("/api/v1/graph/sync", post(trigger_graph_sync))
         .route("/api/v1/status/{source_id}", get(get_processing_status))
@@ -400,145 +397,4 @@ pub async fn process_local_directory(
 }
 
 
-
-// ==========================================
-// From web.rs
-// ==========================================
-
-// REST API endpoints for web scraping / crawling.
-//
-// Endpoints:
-//   POST /api/v1/web/scrape  — scrape a single URL
-//   POST /api/v1/web/crawl   — BFS-crawl an entire website
-
-// ─── Request / Response DTOs ─────────────────────────────────────────────────
-
-/// Scrape a single URL.
-#[derive(Debug, Deserialize)]
-pub struct ScrapeRequest {
-    pub url: String,
-    #[serde(default)]
-    pub include_css: Option<bool>,
-    #[serde(default)]
-    pub include_js: Option<bool>,
-    #[serde(default)]
-    pub metadata: HashMap<String, String>,
-}
-
-/// Crawl an entire website.
-#[derive(Debug, Deserialize)]
-pub struct CrawlRequest {
-    pub url: String,
-    #[serde(default)]
-    pub max_pages: Option<usize>,
-    #[serde(default)]
-    pub max_depth: Option<usize>,
-    #[serde(default)]
-    pub crawl_delay_ms: Option<u64>,
-    #[serde(default)]
-    pub include_css: Option<bool>,
-    #[serde(default)]
-    pub include_js: Option<bool>,
-    #[serde(default)]
-    pub metadata: HashMap<String, String>,
-}
-
-/// Unified response for both scrape and crawl.
-#[derive(Debug, Serialize)]
-pub struct WebResponse {
-    pub success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<WebProcessingResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// ─── Handlers ────────────────────────────────────────────────────────────────
-
-/// POST /api/v1/web/scrape
-///
-/// Scrape a single URL: fetch HTML, parse, chunk, embed, store.
-pub async fn scrape_url(
-    State(processor): State<Arc<UnifiedProcessor>>,
-    Json(body): Json<ScrapeRequest>,
-) -> Json<WebResponse> {
-    let request_id = uuid::Uuid::new_v4().to_string();
-
-    tracing::info!(request_id = %request_id, url = %body.url, "Received scrape request");
-
-    let req = WebProcessingRequest {
-        request_id: request_id.clone(),
-        user_id: "api".to_string(),
-        url: body.url.clone(),
-        crawl: false,
-        max_pages: Some(1),
-        max_depth: Some(0),
-        crawl_delay_ms: None,
-        include_css: body.include_css,
-        include_js: body.include_js,
-        metadata: body.metadata,
-    };
-
-    match processor.handle_web_processing(req).await {
-        Ok(result) => Json(WebResponse {
-            success: true,
-            data: Some(result),
-            error: None,
-        }),
-        Err(e) => {
-            tracing::error!(request_id = %request_id, error = %e, "Scrape failed");
-            Json(WebResponse {
-                success: false,
-                data: None,
-                error: Some(e.to_string()),
-            })
-        }
-    }
-}
-
-/// POST /api/v1/web/crawl
-///
-/// BFS-crawl an entire website: discover pages, scrape each, chunk, embed, store.
-pub async fn crawl_website(
-    State(processor): State<Arc<UnifiedProcessor>>,
-    Json(body): Json<CrawlRequest>,
-) -> Json<WebResponse> {
-    let request_id = uuid::Uuid::new_v4().to_string();
-
-    tracing::info!(
-        request_id = %request_id,
-        url = %body.url,
-        max_pages = ?body.max_pages,
-        max_depth = ?body.max_depth,
-        "Received crawl request"
-    );
-
-    let req = WebProcessingRequest {
-        request_id: request_id.clone(),
-        user_id: "api".to_string(),
-        url: body.url.clone(),
-        crawl: true,
-        max_pages: body.max_pages,
-        max_depth: body.max_depth,
-        crawl_delay_ms: body.crawl_delay_ms,
-        include_css: body.include_css,
-        include_js: body.include_js,
-        metadata: body.metadata,
-    };
-
-    match processor.handle_web_processing(req).await {
-        Ok(result) => Json(WebResponse {
-            success: true,
-            data: Some(result),
-            error: None,
-        }),
-        Err(e) => {
-            tracing::error!(request_id = %request_id, error = %e, "Crawl failed");
-            Json(WebResponse {
-                success: false,
-                data: None,
-                error: Some(e.to_string()),
-            })
-        }
-    }
-}
+
