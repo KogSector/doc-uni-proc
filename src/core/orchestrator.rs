@@ -61,6 +61,15 @@ pub struct DocumentData {
     pub processor: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeData {
+    pub language: String,
+    pub functions: Vec<CodeFunction>,
+    pub classes: Vec<CodeClass>,
+    pub imports: Vec<String>,
+    pub metrics: CodeMetrics,
+    pub ast_summary: AstSummary,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessingResult {
@@ -139,17 +148,7 @@ pub struct AstSummary {
 
 // ─── Kafka message types ────────────────────────────────────────────────────
 
-/// Message consumed from `repo-processing.requests`
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RepoProcessingRequest {
-    pub request_id: String,
-    pub user_id: String,
-    pub repo_url: String,
-    pub repo_type: String, // github, gitlab, bitbucket
-    pub branch: String,
-    pub credentials: Option<String>, // encrypted OAuth token
-    pub processing_mode: String, // full_initial
-}
+
 
 /// Message consumed from `doc-processing.requests`
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,10 +175,6 @@ pub struct RepoUpdateRequest {
     pub provider: String,
 }
 
-
-
-// ─── Orchestrator ───────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebProcessingRequest {
     pub request_id: String,
@@ -193,6 +188,12 @@ pub struct WebProcessingRequest {
     pub include_js: Option<bool>,
     pub metadata: HashMap<String, String>,
 }
+
+
+
+// ─── Orchestrator ───────────────────────────────────────────────────────────
+
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebProcessingResult {
@@ -549,12 +550,7 @@ impl UnifiedProcessor {
                 tracing::info!("Finished process_document for {} with {} chunks", filename, doc_chunks.len());
                 (res, doc_chunks)
             },
-            ContentType::Web(_) => {
-                // Just use process_document for now or return a dummy result if process_web doesn't exist
-                let (res, web_chunks) = self.process_document(content, is_base64, filename, source_id).await;
-                tracing::info!("Finished process_web for {} with {} chunks", filename, web_chunks.len());
-                (res, web_chunks)
-            }
+            ContentType::Web(_) => return Err(ProcessorError::UnsupportedFileType("Web processing not supported via process_file".to_string())),
         };
         
         // --- NEW LOGIC: Diff against snapshot ---

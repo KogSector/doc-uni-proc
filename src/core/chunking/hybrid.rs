@@ -247,7 +247,6 @@ impl ChunkingStrategy for HybridChunker {
         
         let mut final_chunks = Vec::new();
 
-
         
         let raw_chunks = self.chunk_content(content, config);
         let total_chunks = raw_chunks.len();

@@ -688,7 +688,7 @@ impl GraphSync {
             chunks.push(chunk);
         }
 
-        tracing::info!("GraphSync: Fetched {} code chunks for cross-file resolution", chunks.len());
+        tracing::info!("GraphSync: Fetched {} chunks for post-processing", chunks.len());
 
         let mut symbol_rels = Vec::new();
 
