@@ -11,6 +11,8 @@ use crate::processors::documents::DocumentParser;
 
 use crate::infra::storage::{PostgresStorage, GraphSync};
 use crate::graph::extractors::{SourceRelationshipRouter, SemanticExtractor};
+use crate::graph::SimplifiedChunk;
+use crate::infra::events::producer::ChunkEventPublisher;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, LazyLock};
@@ -728,6 +730,84 @@ impl UnifiedProcessor {
         }
 
 
+
+        // ── Step 2: Send chunks to embeddings-service via Kafka for embedding generation ──
+        // NOTE: This is best-effort. If the embeddings-service is down, chunks are still
+        // stored directly in FalkorDB (Step 2.5 below). When the embeddings callback
+        // arrives later, it will MERGE-update the node with the actual embedding vector.
+        {
+            tracing::info!("Creating ChunkEventPublisher for Kafka publishing");
+            let publisher = ChunkEventPublisher::new();
+
+            // Convert internal Chunk models to SimplifiedChunk for Kafka
+            tracing::info!("Converting {} chunks to SimplifiedChunk format", chunk_count);
+            let simplified_chunks: Vec<SimplifiedChunk> = chunks.iter().filter(|c| c.is_dirty).enumerate().map(|(idx, c)| {
+                let (start_line, end_line) = c.metadata.line_range.unwrap_or((0, 0));
+                let composite_id = format!("{}|{}", c.chunk_key, c.file_path);
+
+                tracing::debug!(
+                    "Converting dirty chunk {}: id={}, type={:?}, lines={}-{}, confidence={}",
+                    idx, composite_id, c.chunk_type, start_line, end_line, c.confidence
+                );
+
+                let content_len = c.content.len();
+                if content_len > 100_000 {
+                    tracing::warn!("Large chunk detected: id={}, size={} bytes, file={}", c.id, content_len, source_id);
+                }
+
+                let language = match &c.chunk_type {
+                    crate::core::chunking::types::ChunkType::Code { language, .. } => Some(language.clone()),
+                    _ => None,
+                };
+
+                SimplifiedChunk {
+                    id: composite_id,
+                    file_id: c.file_path.clone(),
+                    chunk_type: format!("{:?}", c.chunk_type),
+                    content: c.content.clone(),
+                    language,
+                    start_line: Some(start_line as u32),
+                    end_line: Some(end_line as u32),
+                    confidence: Some(c.confidence),
+                    quality_score: c.quality.as_ref().map(|q| q.overall),
+                }
+            }).collect();
+
+            tracing::info!("Attempting to publish {} simplified chunks to Kafka for embeddings", simplified_chunks.len());
+            
+            // Batch chunks to avoid Kafka MessageSizeTooLarge error
+            for (batch_idx, batch) in simplified_chunks.chunks(1).enumerate() {
+                let batch_vec = batch.to_vec();
+                let batch_chunks_count = batch_vec.len();
+                
+                // Calculate approximate size
+                let est_size = serde_json::to_string(&batch_vec).unwrap_or_default().len();
+                
+                tracing::debug!(
+                    "Publishing batch {} ({} chunks, approx {} bytes) for source: {}",
+                    batch_idx, batch_chunks_count, est_size, source_id
+                );
+                
+                if est_size > 900_000 {
+                    tracing::warn!("Chunk is very large ({} bytes), might exceed Kafka limit", est_size);
+                }
+
+                if let Err(e) = publisher.publish_chunks(source_id, _repo_name.clone(), batch_vec, Some(source_id.to_string()), user_id).await {
+                    tracing::warn!(
+                        "Kafka publish to embeddings-service failed for batch {} of source_id={}: {}. \
+                         Chunks will still be stored directly in FalkorDB without embeddings.",
+                        batch_idx, source_id, e
+                    );
+                    // Don't return error — continue to direct FalkorDB storage below
+                    break;
+                }
+            }
+            
+            tracing::info!(
+                "Kafka publish phase complete for {} chunks ({} dirty), source: {}",
+                chunk_count, simplified_chunks.len(), source_id
+            );
+        }
 
         // ── Step 1.5: Store chunks DIRECTLY in FalkorDB (without embeddings) ──
         // This ensures the knowledge graph is always populated, regardless of whether

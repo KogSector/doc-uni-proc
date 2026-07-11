@@ -24,6 +24,8 @@ tonic = { version = "0.11", features = ["transport", "codegen", "prost"] }
 prost = "0.12"
 prost-types = "0.12"
 
+# Kafka for event streaming
+rdkafka = { version = "0.39.0", features = ["cmake-build", "ssl-vendored"] }
 
 # FalkorDB via Redis protocol
 redis = { version = "0.25", features = ["tokio-comp", "tokio-rustls-comp"] }
@@ -117,6 +119,7 @@ tree-sitter-scala = "0.26.0"
 tree-sitter-bash = "0.25.1"
 tree-sitter-html = "0.23.2"
 tree-sitter-md = "0.5.3"
+
 
 [dev-dependencies]
 # Tests moved to ConFuse-test-module (Python API tests)
