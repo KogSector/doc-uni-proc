@@ -336,6 +336,11 @@ impl UnifiedProcessor {
             tracing::error!("Failed to store and publish chunks for {}: {}", filename, e);
         }
 
+        // --- NEW LOGIC: Extract and store relationships for the single file ---
+        if let Err(e) = self.extract_and_store_relationships(&chunks, source_id, user_id).await {
+            tracing::error!("Failed to extract and store relationships for {}: {}", filename, e);
+        }
+
         let chunk_data: Vec<ChunkData> = chunks.iter().enumerate().map(|(_idx, chunk)| {
             let (start_line, end_line) = chunk.metadata.line_range.unwrap_or((0, 0));
             let chunk_type_str = match &chunk.chunk_type {

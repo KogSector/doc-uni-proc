@@ -1,176 +1,150 @@
 use crate::core::chunking::Chunk;
 use crate::graph::models::{ChunkRelationship, ChunkRelationType};
 use crate::core::config::LlmConfig;
-use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-/// Fast local mathematical extractor for conceptual and semantic relationships
+/// LLM-based semantic extractor for conceptual relationships
 pub struct SemanticExtractor {
-    _config: LlmConfig, // Kept for compatibility, though unused now
+    config: LlmConfig,
+    client: reqwest::Client,
+}
+
+#[derive(serde::Serialize)]
+struct GeminiRequest {
+    contents: Vec<GeminiContent>,
+    generation_config: GeminiGenerationConfig,
+}
+
+#[derive(serde::Serialize)]
+struct GeminiGenerationConfig {
+    temperature: f32,
+    response_mime_type: String,
+}
+
+#[derive(serde::Serialize)]
+struct GeminiContent {
+    parts: Vec<GeminiPart>,
+}
+
+#[derive(serde::Serialize)]
+struct GeminiPart {
+    text: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiResponse {
+    candidates: Option<Vec<GeminiCandidate>>,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiCandidate {
+    content: GeminiMessageContent,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiMessageContent {
+    parts: Vec<GeminiResponsePart>,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiResponsePart {
+    text: String,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct ExtractedRelationship {
+    source_id: String,
+    target_id: String,
+    relation: String,
+    confidence: f32,
+    reasoning: String,
 }
 
 impl SemanticExtractor {
     pub fn new(config: LlmConfig) -> Self {
-        Self { _config: config }
+        Self { 
+            config,
+            client: reqwest::Client::new(),
+        }
     }
 
-    /// Extracts semantic relationships across chunks using local TF-IDF and Lexical Overlap
+    /// Extracts semantic relationships across chunks using the configured LLM
     pub async fn extract_semantic(&self, chunks: &[Chunk]) -> Vec<ChunkRelationship> {
-        if chunks.is_empty() {
+        if chunks.is_empty() || chunks.len() == 1 {
             return Vec::new();
         }
 
-        // We run the CPU-intensive math in a blocking task so we don't block the async executor
-        let chunks_clone = chunks.to_vec();
+        // Limit chunks per request to avoid exceeding context window or JSON parsing complexity
+        let mut all_relationships = Vec::new();
         
-        tokio::task::spawn_blocking(move || {
-            let mut relationships = Vec::new();
+        // Chunk into groups of up to 10
+        for chunk_group in chunks.chunks(10) {
+            let mut prompt = String::from("Analyze the following document chunks and identify semantic relationships between them. Valid relationship types are: SIMILAR_TO, CONTINUATION_OF, ELABORATES_ON, CONTRADICTS. Only output a JSON array of objects with fields: 'source_id', 'target_id', 'relation', 'confidence' (0.0 to 1.0), and 'reasoning'. If none, output [].\n\n");
             
-            // 1. Entity (Identifier) Overlap
-            let entity_relations = Self::extract_entity_overlap(&chunks_clone);
-            relationships.extend(entity_relations);
+            let mut id_map = HashMap::new();
             
-            // 2. TF-IDF Cosine Similarity
-            let semantic_relations = Self::extract_tfidf_similarity(&chunks_clone);
-            relationships.extend(semantic_relations);
-            
-            relationships
-        })
-        .await
-        .unwrap_or_default()
-    }
+            for c in chunk_group {
+                let short_id = c.id.to_string()[0..8].to_string();
+                id_map.insert(short_id.clone(), c.id);
+                prompt.push_str(&format!("--- CHUNK ID: {} ---\n{}\n\n", short_id, c.content.chars().take(2000).collect::<String>()));
+            }
 
-    fn extract_entity_overlap(chunks: &[Chunk]) -> Vec<ChunkRelationship> {
-        let mut relationships = Vec::new();
-        
-        // Regex for CamelCase, PascalCase, or snake_case identifiers (length >= 4)
-        // This heuristic finds function names, class names, constants, etc.
-        let re = Regex::new(r"\b([A-Z][a-zA-Z0-9]{3,}|[a-z]{2,}(?:_[a-z0-9]+)+|[a-z]+(?:[A-Z][a-z0-9]+)+)\b").unwrap();
-        
-        let mut chunk_entities: HashMap<uuid::Uuid, HashSet<String>> = HashMap::new();
-        
-        for chunk in chunks {
-            let mut entities = HashSet::new();
-            for cap in re.captures_iter(&chunk.content) {
-                if let Some(m) = cap.get(1) {
-                    entities.insert(m.as_str().to_string());
+            let request_body = GeminiRequest {
+                contents: vec![GeminiContent {
+                    parts: vec![GeminiPart { text: prompt }],
+                }],
+                generation_config: GeminiGenerationConfig {
+                    temperature: 0.1,
+                    response_mime_type: "application/json".to_string(),
                 }
-            }
-            chunk_entities.insert(chunk.id, entities);
-        }
-        
-        // Compare all pairs
-        for i in 0..chunks.len() {
-            for j in (i + 1)..chunks.len() {
-                let c1 = &chunks[i];
-                let c2 = &chunks[j];
-                
-                let e1 = chunk_entities.get(&c1.id).unwrap();
-                let e2 = chunk_entities.get(&c2.id).unwrap();
-                
-                let intersection_count = e1.intersection(e2).count();
-                
-                if intersection_count >= 2 { // Heuristic: sharing at least 2 complex identifiers
-                    // Determine directionality based on who defines vs who uses, but a simple SHARES_CONCEPT is safer
-                    relationships.push(
-                        ChunkRelationship::new(
-                            c1.id,
-                            c2.id,
-                            ChunkRelationType::Semantic("SHARES_CONCEPT".to_string()),
-                            0.7 + (0.01 * intersection_count.min(30) as f32), // Confidence bounded by 1.0
-                        ).with_fact(format!("Shares {} complex identifiers", intersection_count))
-                    );
-                }
-            }
-        }
-        
-        relationships
-    }
+            };
 
-    fn extract_tfidf_similarity(chunks: &[Chunk]) -> Vec<ChunkRelationship> {
-        let mut relationships = Vec::new();
-        let num_docs = chunks.len() as f32;
-        
-        // Basic word tokenizer (alphanumeric >= 3 chars)
-        let token_re = Regex::new(r"\b[a-zA-Z0-9]{3,}\b").unwrap();
-        
-        let mut doc_tokens = Vec::with_capacity(chunks.len());
-        let mut df: HashMap<String, f32> = HashMap::new();
-        
-        for chunk in chunks {
-            let mut tf: HashMap<String, f32> = HashMap::new();
-            let mut unique_in_doc = HashSet::new();
-            
-            for cap in token_re.captures_iter(&chunk.content.to_lowercase()) {
-                if let Some(m) = cap.get(0) {
-                    let word = m.as_str().to_string();
-                    *tf.entry(word.clone()).or_insert(0.0) += 1.0;
-                    unique_in_doc.insert(word);
+            let url = format!("{}/v1beta/models/{}:generateContent?key={}", 
+                self.config.base_url.trim_end_matches('/'),
+                self.config.model,
+                self.config.api_key
+            );
+
+            let res = match self.client.post(&url).json(&request_body).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!("LLM request failed: {}", e);
+                    continue;
                 }
-            }
-            
-            for word in unique_in_doc {
-                *df.entry(word).or_insert(0.0) += 1.0;
-            }
-            
-            doc_tokens.push(tf);
-        }
-        
-        // Calculate TF-IDF vectors
-        let mut tfidf_vectors = Vec::with_capacity(chunks.len());
-        for tf in doc_tokens {
-            let mut vec: HashMap<String, f32> = HashMap::new();
-            let mut norm_sq = 0.0;
-            
-            for (word, count) in tf {
-                let doc_freq = df.get(&word).unwrap_or(&1.0);
-                let idf = (num_docs / doc_freq).ln() + 1.0;
-                let val = count * idf;
-                vec.insert(word, val);
-                norm_sq += val * val;
-            }
-            
-            let norm = norm_sq.sqrt().max(1e-10);
-            
-            // Normalize
-            for val in vec.values_mut() {
-                *val /= norm;
-            }
-            
-            tfidf_vectors.push(vec);
-        }
-        
-        // Calculate pairwise cosine similarity
-        for i in 0..chunks.len() {
-            for j in (i + 1)..chunks.len() {
-                let mut dot_product = 0.0;
-                let v1 = &tfidf_vectors[i];
-                let v2 = &tfidf_vectors[j];
-                
-                // Iterate over the smaller vector for speed
-                let (smaller, larger) = if v1.len() < v2.len() { (v1, v2) } else { (v2, v1) };
-                
-                for (word, val1) in smaller {
-                    if let Some(val2) = larger.get(word) {
-                        dot_product += val1 * val2;
+            };
+
+            if let Ok(gemini_res) = res.json::<GeminiResponse>().await {
+                if let Some(candidates) = gemini_res.candidates {
+                    if let Some(candidate) = candidates.first() {
+                        if let Some(part) = candidate.content.parts.first() {
+                            let text = &part.text;
+                            // Attempt to parse the JSON array
+                            if let Ok(extracted) = serde_json::from_str::<Vec<ExtractedRelationship>>(text) {
+                                for rel in extracted {
+                                    if let (Some(&src_uuid), Some(&tgt_uuid)) = (id_map.get(&rel.source_id), id_map.get(&rel.target_id)) {
+                                        if src_uuid != tgt_uuid {
+                                            all_relationships.push(
+                                                ChunkRelationship::new(
+                                                    src_uuid,
+                                                    tgt_uuid,
+                                                    ChunkRelationType::Semantic(rel.relation),
+                                                    rel.confidence,
+                                                ).with_fact(rel.reasoning)
+                                            );
+                                        }
+                                    }
+                                }
+                            } else {
+                                tracing::warn!("Failed to parse LLM JSON output: {}", text);
+                            }
+                        }
                     }
                 }
-                
-                // Threshold for semantic similarity
-                if dot_product > 0.35 {
-                    relationships.push(
-                        ChunkRelationship::new(
-                            chunks[i].id,
-                            chunks[j].id,
-                            ChunkRelationType::Semantic("SIMILAR_TO".to_string()),
-                            dot_product,
-                        ).with_fact(format!("TF-IDF Cosine Similarity of {:.2}", dot_product))
-                    );
-                }
+            } else {
+                tracing::error!("Failed to parse Gemini response");
             }
         }
         
-        relationships
+        all_relationships
     }
 }
-
