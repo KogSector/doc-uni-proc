@@ -85,7 +85,7 @@ impl UnifiedProcessor {
 
         // ── Path-traversal guard (cross-platform) ───────────────────────────────────
         let base_env = std::env::var("DOWNLOADS_BASE_PATH")
-            .unwrap_or_else(|_| "c:/Users/risha/Desktop/Work/downloads".to_string());
+            .unwrap_or_else(|_| std::env::temp_dir().join("confuse-downloads").to_string_lossy().to_string());
         let base_path = std::path::PathBuf::from(&base_env);
         
         tracing::info!(
