@@ -85,9 +85,10 @@ impl AxumAuthLayer {
     pub async fn verify_token(&self, token: &str) -> Result<AuthenticatedUser, String> {
         // Try gRPC first if available
         if let Some(mut client) = self.grpc_client.clone() {
-            let request = tonic::Request::new(ValidateTokenRequest {
+            let mut request = tonic::Request::new(ValidateTokenRequest {
                 token: token.to_string(),
             });
+            request.set_timeout(std::time::Duration::from_secs(5));
 
             match client.validate_token(request).await {
                 Ok(response) => {
@@ -141,9 +142,10 @@ impl AxumAuthLayer {
     pub async fn validate_api_key(&self, key: &str) -> Result<AuthenticatedUser, String> {
         // Try gRPC first if available
         if let Some(mut client) = self.grpc_client.clone() {
-            let request = tonic::Request::new(crate::infra::proto::confuse_auth_v1::ValidateApiKeyRequest {
+            let mut request = tonic::Request::new(crate::infra::proto::confuse_auth_v1::ValidateApiKeyRequest {
                 api_key: key.to_string(),
             });
+            request.set_timeout(std::time::Duration::from_secs(5));
 
             match client.validate_api_key(request).await {
                 Ok(response) => {
