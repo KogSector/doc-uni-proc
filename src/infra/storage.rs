@@ -757,26 +757,6 @@ impl GraphSync {
             }
         }
 
-        // Connect isolated files to the very first chunk of the source with SAME_SOURCE
-        if let Some(first_chunk_id) = all_file_first_chunks.first().copied() {
-            for &file_first_chunk in &all_file_first_chunks {
-                if !connected_chunks.contains(&file_first_chunk) && file_first_chunk != first_chunk_id {
-                    let edge = crate::graph::models::ChunkRelationship::new(
-                        file_first_chunk,
-                        first_chunk_id,
-                        crate::graph::models::ChunkRelationType::SameSource,
-                        1.0,
-                    ).with_evidence(vec![
-                        crate::graph::models::RelationshipEvidence {
-                            evidence_type: "fallback".to_string(),
-                            location: "same_source_repo".to_string(),
-                            snippet: None,
-                        }
-                    ]);
-                    symbol_rels.push(edge);
-                }
-            }
-        }
 
         tracing::info!("GraphSync: Found {} cross-file relationships (including fallbacks)", symbol_rels.len());
 
