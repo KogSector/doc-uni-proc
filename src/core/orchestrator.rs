@@ -905,17 +905,7 @@ impl UnifiedProcessor {
         let semantic_rels = self.semantic_extractor.extract_semantic(&semantic_chunks).await;
         relationships.extend(semantic_rels);
 
-        // ── Step 3: Ensure minimum connectivity with SameSource edges ──
-        // Link every chunk to the first chunk of the source to guarantee they are connected to the same source.
-        let first_chunk_id = chunks[0].id;
-        for c in chunks.iter().skip(1) {
-            relationships.push(crate::graph::models::ChunkRelationship::new(
-                c.id,
-                first_chunk_id,
-                crate::graph::models::ChunkRelationType::SameSource,
-                1.0,
-            ));
-        }
+
 
         let mut uuid_to_composite = std::collections::HashMap::new();
         for c in chunks {
