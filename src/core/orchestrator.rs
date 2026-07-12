@@ -10,7 +10,7 @@ use crate::core::{Config, Result, ProcessorError};
 use crate::processors::documents::DocumentParser;
 
 use crate::infra::storage::{PostgresStorage, GraphSync};
-use crate::graph::extractors::{SourceRelationshipRouter, SemanticExtractor};
+use crate::graph::extractors::SourceRelationshipRouter;
 use crate::graph::SimplifiedChunk;
 use crate::infra::events::producer::ChunkEventPublisher;
 use serde::{Deserialize, Serialize};
@@ -212,7 +212,6 @@ pub struct UnifiedProcessor {
     chunker: crate::core::chunking::HybridChunker,
     /// Source-agnostic structural relationship router (replaces UnifiedRelationshipExtractor)
     relationship_router: SourceRelationshipRouter,
-    semantic_extractor: SemanticExtractor,
 
 
     pub falkordb_storage: Arc<crate::infra::storage::FalkordbStorage>,
@@ -242,7 +241,6 @@ impl UnifiedProcessor {
         
 
         let relationship_router = SourceRelationshipRouter::new();
-        let semantic_extractor = SemanticExtractor::new(config.llm.clone());
 
 
 
@@ -255,7 +253,6 @@ impl UnifiedProcessor {
             chunker,
 
             relationship_router,
-            semantic_extractor,
 
             falkordb_storage,
             chunk_content_cache: Arc::new(Mutex::new(HashMap::new())),
@@ -881,29 +878,6 @@ impl UnifiedProcessor {
         let mut relationships = self.relationship_router.extract_all(chunks);
 
 
-
-        // ── Step 2.75: Semantic LLM relationship extraction ──
-        // Only run LLM if the file is complex (e.g. >= 1500 characters) and structural extraction found 0 relationships.
-        let is_complex_fallback = chunks.iter().any(|c| {
-            if let crate::core::chunking::ChunkType::Code { .. } = c.chunk_type {
-                c.content.chars().count() >= 1500 && relationships.is_empty()
-            } else {
-                false
-            }
-        });
-        let semantic_chunks: Vec<_> = chunks.iter().filter(|c| {
-            match &c.chunk_type {
-                crate::core::chunking::ChunkType::Code { .. } => {
-                    is_complex_fallback
-                }
-                _ => true
-            }
-        }).cloned().collect();
-        
-        tracing::info!("Filtered {} chunks down to {} for semantic LLM extraction", chunk_count, semantic_chunks.len());
-        
-        let semantic_rels = self.semantic_extractor.extract_semantic(&semantic_chunks).await;
-        relationships.extend(semantic_rels);
 
 
 
