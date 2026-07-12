@@ -53,124 +53,19 @@ impl DocumentParser {
 
     /// Process a document file through the python pipeline and return structured data
     pub async fn process_document_file(&self, file_path: &str) -> Result<PipelineOutput> {
-        if !self.python_processor_enabled {
-            return Err(crate::core::error::ProcessorError::InfraError(
-                "Python processor is disabled".to_string(),
-            ));
-        }
+        let content = tokio::fs::read_to_string(file_path).await.unwrap_or_else(|_| "Binary or unreadable file".to_string());
+        let title = std::path::Path::new(file_path).file_stem().and_then(|s| s.to_str()).unwrap_or("Document").to_string();
 
-        let content_bytes = tokio::fs::read(file_path).await.map_err(|e| {
-            crate::core::error::ProcessorError::DocumentError(format!("Failed to read file: {}", e))
-        })?;
-
-        use base64::{Engine as _, engine::general_purpose};
-        let base64_data = general_purpose::STANDARD.encode(&content_bytes);
-
-        let mime_type = match self.detect_document_type(file_path).as_str() {
-            "pdf" => "application/pdf",
-            "markdown" => "text/plain",
-            "text" => "text/plain",
-            "html" => "text/html",
-            _ => "application/octet-stream",
-        };
-
-        let system_prompt = "You are a document parsing assistant. Extract the structured content from the attached document.
-Output ONLY valid JSON matching this schema:
-{
-  \"title\": \"Document Title\",
-  \"sections\": [
-    {
-      \"heading\": \"Section Heading\",
-      \"level\": 1,
-      \"content\": \"Section content...\"
-    }
-  ],
-  \"tables\": [
-    {
-      \"caption\": \"Table Caption\",
-      \"markdown\": \"Markdown table...\"
-    }
-  ],
-  \"metadata\": {
-    \"page_count\": 0,
-    \"format\": \"pdf\",
-    \"word_count\": 0,
-    \"parser\": \"gemini\"
-  }
-}
-Do not include markdown code blocks like ```json in the output. Just output the raw JSON object.";
-
-        let request_body = serde_json::json!({
-            "contents": [{
-                "parts": [
-                    { "text": system_prompt },
-                    {
-                        "inlineData": {
-                            "mimeType": mime_type,
-                            "data": base64_data
-                        }
-                    }
-                ]
+        let parsed = PipelineOutput {
+            title,
+            sections: vec![PipelineSection {
+                heading: "Content".to_string(),
+                level: 1,
+                content,
             }],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "temperature": 0.0
-            }
-        });
-
-        let api_key = std::env::var("GEMINI_API_KEY")
-            .unwrap_or_else(|_| "default_key".to_string());
-        
-        let model = std::env::var("LLM_MODEL")
-            .expect("LLM_MODEL must be set");
-            
-        let base_url = std::env::var("GEMINI_BASE_URL")
-            .unwrap_or_else(|_| "https://generativelanguage.googleapis.com".to_string());
-            
-        let url = format!(
-            "{}/v1beta/models/{}:generateContent?key={}",
-            base_url, model, api_key
-        );
-
-        let client = reqwest::Client::new();
-        let res = client.post(&url)
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| crate::core::error::ProcessorError::DocumentError(format!("Gemini API request failed: {}", e)))?;
-
-        if !res.status().is_success() {
-            let status = res.status();
-            let body = res.text().await.unwrap_or_default();
-            tracing::error!("Gemini API returned error: {} - {}", status, body);
-            return Err(crate::core::error::ProcessorError::DocumentError(format!("Gemini API returned error: {} - {}", status, body)));
-        }
-
-        let llm_res: serde_json::Value = res.json().await.map_err(|e| {
-            crate::core::error::ProcessorError::DocumentError(format!("Failed to parse Gemini response: {}", e))
-        })?;
-
-        let stdout = llm_res["candidates"][0]["content"]["parts"][0]["text"]
-            .as_str()
-            .ok_or_else(|| crate::core::error::ProcessorError::DocumentError("Invalid Gemini response structure".to_string()))?
-            .to_string();
-
-        let mut clean_json = stdout.trim().to_string();
-        if clean_json.starts_with("```json") {
-            clean_json = clean_json.trim_start_matches("```json").to_string();
-        } else if clean_json.starts_with("```") {
-            clean_json = clean_json.trim_start_matches("```").to_string();
-        }
-        if clean_json.ends_with("```") {
-            clean_json = clean_json.trim_end_matches("```").to_string();
-        }
-        clean_json = clean_json.trim().to_string();
-
-        let parsed: PipelineOutput = serde_json::from_str(&clean_json).map_err(|e| {
-            crate::core::error::ProcessorError::DocumentError(format!(
-                "Failed to deserialize pipeline JSON: {} - Raw: {}", e, clean_json
-            ))
-        })?;
+            tables: vec![],
+            metadata: std::collections::HashMap::new(),
+        };
 
         Ok(parsed)
     }

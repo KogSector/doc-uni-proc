@@ -12,7 +12,6 @@ pub struct Config {
     pub falkordb: FalkordbConfig,
     pub kafka: KafkaConfig,
     pub web: WebConfig,
-    pub llm: LlmConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,25 +178,7 @@ impl KafkaConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmConfig {
-    pub api_key: String,
-    pub base_url: String,
-    pub model: String,
-}
 
-impl LlmConfig {
-    pub fn from_env() -> Result<Self, String> {
-        Ok(Self {
-            api_key: std::env::var("GEMINI_API_KEY")
-                .map_err(|_| "GEMINI_API_KEY must be set in the environment".to_string())?,
-            base_url: std::env::var("GEMINI_BASE_URL")
-                .map_err(|_| "GEMINI_BASE_URL must be set in the environment".to_string())?,
-            model: std::env::var("LLM_MODEL")
-                .expect("LLM_MODEL must be set"),
-        })
-    }
-}
 
 impl Config {
     pub fn from_env() -> crate::core::Result<Self> {
@@ -257,9 +238,6 @@ impl Config {
             .map_err(crate::core::error::ProcessorError::ConfigError)?;
         let web = WebConfig::from_env()
             .map_err(crate::core::error::ProcessorError::ConfigError)?;
-        let llm = LlmConfig::from_env()
-            .map_err(crate::core::error::ProcessorError::ConfigError)?;
-
         Ok(Self {
             server: ServerConfig {
                 host,
@@ -276,7 +254,6 @@ impl Config {
             falkordb,
             kafka,
             web,
-            llm,
         })
     }
 }

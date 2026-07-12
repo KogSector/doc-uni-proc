@@ -14,7 +14,6 @@
 //! 2. Add a field to `SourceRelationshipRouter`
 //! 3. Call `.<source>.extract(chunks)` inside `extract_all()`
 
-pub mod semantic;
 mod hierarchical;
 
 use crate::core::chunking::Chunk;
@@ -22,7 +21,6 @@ use crate::graph::models::ChunkRelationship;
 
 pub use crate::processors::documents::graph::DocumentExtractor;
 
-pub use semantic::SemanticExtractor;
 use hierarchical::HierarchicalExtractor;
 
 // ─── Trait ─────────────────────────────────────────────────────────────────

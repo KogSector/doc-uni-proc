@@ -86,15 +86,7 @@ pub struct AgentConfig {
     
     /// Timeout for agent operations (seconds)
     pub timeout_seconds: u64,
-    
-    /// LLM provider (gemini)
-    pub llm_provider: String,
-    
-    /// LLM model to use
-    pub llm_model: String,
-    
-    /// LLM API endpoint (for custom providers)
-    pub llm_endpoint: Option<String>,
+
     
     /// Cache LLM responses (reduces API calls)
     pub enable_cache: bool,
@@ -112,9 +104,7 @@ impl Default for AgentConfig {
             enabled: true,
             pool_size: 4,
             timeout_seconds: 300,
-            llm_provider: "gemini".to_string(),
-            llm_model: std::env::var("CONFUSE_AGENTS_LLM_MODEL").unwrap_or_else(|_| "gemini-2.5-flash-lite".to_string()),
-            llm_endpoint: None,
+
             enable_cache: true,
             cache_ttl_seconds: 3600,
             max_tokens: 4096,
@@ -165,15 +155,7 @@ impl ChunkingConfig {
         // Load Agents Config
         // Agents are REQUIRED in fail-fast mode
         info!("Loading agent configuration (fail-fast mode)");
-        
-        config.agents.llm_provider = std::env::var("CONFUSE_AGENTS_LLM_PROVIDER")
-            .unwrap_or_else(|_| "gemini".to_string());
-        config.agents.llm_model = std::env::var("CONFUSE_AGENTS_LLM_MODEL")
-            .or_else(|_| std::env::var("LLM_MODEL"))
-            .expect("CONFUSE_AGENTS_LLM_MODEL or LLM_MODEL must be set");
-        config.agents.llm_endpoint = std::env::var("CONFUSE_AGENTS_LLM_ENDPOINT")
-            .or_else(|_| std::env::var("GEMINI_BASE_URL"))
-            .ok();
+
         
         config
     }
