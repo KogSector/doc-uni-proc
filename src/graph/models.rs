@@ -100,6 +100,8 @@ pub enum ChunkRelationType {
     // ── Code ──────────────────────────────────────────────────────────────────
     /// Function chunk calls another function chunk
     FunctionCalls,
+    /// Function chunk makes a network or external API call
+    ApiCalls,
     /// Class chunk inherits from another class chunk
     ClassInherits,
     /// File chunk imports another file chunk
@@ -109,7 +111,7 @@ pub enum ChunkRelationType {
     /// Function chunk references a variable chunk
     FunctionReferencesVariable,
     /// File or module chunk defines a function or class
-    Defines,
+    DefinedIn,
     /// Chunk implements a trait/interface defined in another chunk
     Implements,
     /// Test chunk tests a function/class chunk
@@ -123,7 +125,7 @@ pub enum ChunkRelationType {
 
     // ── Document ──────────────────────────────────────────────────────────────
     /// Document chunk references a code chunk
-    DocumentReferencesCode,
+    ReferencedIn,
     /// Document chunk links to another document chunk (markdown / HTML link)
     DocumentReferencesDoc,
 
@@ -180,18 +182,19 @@ impl ChunkRelationType {
         match self {
             // Code
             Self::FunctionCalls => "CALLS",
+            Self::ApiCalls => "API_CALLS",
             Self::ClassInherits => "INHERITS",
             Self::FileImports => "IMPORTS",
             Self::ClassContainsMethod => "CONTAINS_METHOD",
             Self::FunctionReferencesVariable => "REFERENCES",
-            Self::Defines => "DEFINES",
+            Self::DefinedIn => "DEFINED_IN",
             Self::Implements => "IMPLEMENTS",
             Self::Tests => "TESTS",
             Self::Instantiates => "INSTANTIATES",
             Self::TypeReference => "TYPE_REF",
             Self::Decorates => "DECORATES",
             // Document
-            Self::DocumentReferencesCode => "DOCUMENTS_CODE",
+            Self::ReferencedIn => "REFERENCED_IN",
             Self::DocumentReferencesDoc => "LINKS_TO",
             // Web
             Self::HyperlinkReference => "HYPERLINKS_TO",
@@ -222,17 +225,18 @@ impl ChunkRelationType {
     pub fn category(&self) -> &str {
         match self {
             Self::FunctionCalls
+            | Self::ApiCalls
             | Self::ClassInherits
             | Self::ClassContainsMethod
             | Self::FunctionReferencesVariable
-            | Self::Defines
+            | Self::DefinedIn
             | Self::Implements
             | Self::FileImports
             | Self::Tests
             | Self::Instantiates
             | Self::Decorates
             | Self::TypeReference => "code",
-            Self::DocumentReferencesCode
+            Self::ReferencedIn
             | Self::DocumentReferencesDoc => "document",
             Self::HyperlinkReference | Self::CanonicalUrl => "web",
             Self::ThreadReply | Self::MentionReference | Self::TopicContinuation => "conversation",

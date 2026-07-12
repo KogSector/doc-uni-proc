@@ -173,7 +173,7 @@ fn extract_citation_relationships(
                             ChunkRelationship::new(
                                 chunk.id,
                                 target_id,
-                                ChunkRelationType::DocumentReferencesCode,
+                                ChunkRelationType::ReferencedIn,
                                 0.85,
                             )
                             .with_evidence(vec![RelationshipEvidence {
