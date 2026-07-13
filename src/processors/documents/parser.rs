@@ -122,7 +122,7 @@ pub fn build_document_chunks(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    let mut overview_text = format!(
+    let overview_text = format!(
         "# {}\n\nFile: {}\nPages: {}\nWords: {}\nSections: {}\nTables: {}\n\n## Document Structure\n{}\n\n---\n\n",
         parsed.title,
         filename,
