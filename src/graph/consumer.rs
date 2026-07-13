@@ -245,18 +245,18 @@ impl UnifiedEventConsumer {
     }
 
     async fn handle_event(processor: Arc<UnifiedProcessor>, event_json: serde_json::Value) -> anyhow::Result<()> {
-        debug!("Processing raw event: (type {})", event_json.get("type").and_then(|v| v.as_str()).unwrap_or("unknown"));
+        // Removed noisy Processing raw event log
 
 
 
         // 2. Try SimplifiedEmbeddingGeneratedEvent
         if let Ok(emb_event) = serde_json::from_value::<SimplifiedEmbeddingGeneratedEvent>(event_json.clone()) {
-            info!("Handling SimplifiedEmbeddingGeneratedEvent: source_id={}, chunks={}", emb_event.source_id, emb_event.chunks.len());
-
             if emb_event.repo_name.is_some() {
-                debug!("Skipping repository embedding event in doc-uni-proc (source_id={})", emb_event.source_id);
+                // Silently skip repository embedding events in doc-uni-proc
                 return Ok(());
             }
+
+            info!("Handling SimplifiedEmbeddingGeneratedEvent: source_id={}, chunks={}", emb_event.source_id, emb_event.chunks.len());
 
             let user_id = emb_event.metadata.user_id.as_deref().unwrap_or("system");
             let user_graph = processor.falkordb_storage.with_user_graph(user_id);
