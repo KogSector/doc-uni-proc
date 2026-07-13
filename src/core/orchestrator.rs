@@ -331,7 +331,9 @@ impl UnifiedProcessor {
         // ----------------------------------------
         
         // Send chunks to falkordb & publish to embeddings-service
-        if let Err(e) = self.store_and_publish_chunks(chunks.clone(), source_id, Some(repo_name.to_string()), user_id).await {
+        // For documents, repo_name is explicitly set to None so that embeddings-service
+        // generated events are routed back to doc-uni-proc instead of repo-uni-proc.
+        if let Err(e) = self.store_and_publish_chunks(chunks.clone(), source_id, None, user_id).await {
             tracing::error!("Failed to store and publish chunks for {}: {}", filename, e);
         }
 

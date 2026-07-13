@@ -155,26 +155,12 @@ where
 //
 // Listens for:
 // - SimplifiedEmbeddingGeneratedEvent: triggered by embeddings-service with embeddings
-// - StreamedFileEvent: streamed repository files on repo.events topic
+// - SimplifiedEmbeddingGeneratedEvent: triggered by embeddings-service with embeddings
 
 use tracing::debug;
 use crate::graph::SimplifiedEmbeddingGeneratedEvent;
 use crate::infra::events::topics::Topics;
-use crate::infra::events::types::{RepoUpdated, RepoIngestRequested};
 use crate::core::orchestrator::UnifiedProcessor;
-
-#[derive(Debug, serde::Deserialize)]
-pub struct StreamedFileEvent {
-    pub repo_id: String,
-    #[serde(default)]
-    pub repo_name: String,
-    pub file_path: String,
-    pub content: String,
-    pub url: String,
-    pub user_id: Option<String>,
-    #[serde(default)]
-    pub is_deleted: bool,
-}
 
 pub struct UnifiedEventConsumer {
     processor: Arc<UnifiedProcessor>,
@@ -218,11 +204,10 @@ impl UnifiedEventConsumer {
 
         consumer.subscribe(&[
             Topics::EMBEDDING_GENERATED,
-            Topics::REPO_EVENTS,
         ]).await?;
 
-        info!("Unified event consumer started on topics: {}, {}",
-            Topics::EMBEDDING_GENERATED, Topics::REPO_EVENTS);
+        info!("Unified event consumer started on topics: {}",
+            Topics::EMBEDDING_GENERATED);
 
         // Use the consume method from EventConsumer which handles the loop and spawning
         // We use boxed_handler helper to ensure the closure returns a BoxFuture as required
@@ -263,39 +248,6 @@ impl UnifiedEventConsumer {
         debug!("Processing raw event: (type {})", event_json.get("type").and_then(|v| v.as_str()).unwrap_or("unknown"));
 
 
-
-        // 1.5. Try RepoUpdated (from webhooks)
-        if let Ok(repo_updated) = serde_json::from_value::<RepoUpdated>(event_json.clone()) {
-            info!("Ignoring RepoUpdated event for repo: {} (handled by data-connector HTTP streaming)", repo_updated.payload.repo_id);
-            return Ok(());
-        }
-
-        // 1.6 Try RepoIngestRequested (handled by data-connector now)
-        if let Ok(repo_req) = serde_json::from_value::<RepoIngestRequested>(event_json.clone()) {
-            info!("Ignoring RepoIngestRequested event for repo: {} (handled by data-connector streaming API)", repo_req.payload.repo_id);
-            return Ok(());
-        }
-
-        // 1.8. Try StreamedFileEvent (file streaming from data-connector)
-        if let Ok(file_event) = serde_json::from_value::<StreamedFileEvent>(event_json.clone()) {
-            info!("Handling StreamedFileEvent via Kafka: repo_id={}, file_path={}, is_deleted={}", file_event.repo_id, file_event.file_path, file_event.is_deleted);
-            let user_id = file_event.user_id.unwrap_or_else(|| "system".to_string());
-            
-            if file_event.is_deleted {
-                if let Err(e) = processor.delete_file(&file_event.file_path, &file_event.repo_id, &user_id).await {
-                    error!("Failed to delete file {} via Kafka: {}", file_event.file_path, e);
-                    return Err(e.into());
-                }
-                info!("Successfully deleted file {} via Kafka", file_event.file_path);
-            } else {
-                if let Err(e) = processor.process_file(&file_event.content, false, &file_event.file_path, &file_event.repo_id, &file_event.repo_name, &user_id).await {
-                    error!("Failed to process streamed file {} via Kafka: {}", file_event.file_path, e);
-                    return Err(e.into());
-                }
-                info!("Successfully processed streamed file {} via Kafka", file_event.file_path);
-            }
-            return Ok(());
-        }
 
         // 2. Try SimplifiedEmbeddingGeneratedEvent
         if let Ok(emb_event) = serde_json::from_value::<SimplifiedEmbeddingGeneratedEvent>(event_json.clone()) {
@@ -446,6 +398,10 @@ impl UnifiedEventConsumer {
                             (r#"source\s+["']?([^"'\s]+)["']?"#, "bash_source"),
                             (r#"\.\s+["']?([^"'\s]+)["']?"#, "bash_dot_source"),
                         ]
+                    } else if chunk_type_lower.contains("markdown") || chunk_type_lower.contains("md") {
+                        vec![
+                            (r#"\[[^\]]*\]\(([^)]+)\)"#, "markdown_link"),
+                        ]
                     } else {
                         vec![]
                     };
@@ -465,8 +421,8 @@ impl UnifiedEventConsumer {
                                     }
 
                                     let query = format!(
-                                        r#"MATCH (a:Vector_Chunk {{id: "{}"}}) MATCH (b:Vector_Chunk) WHERE b.source_id = "{}" AND (b.id CONTAINS "|{}." OR b.id CONTAINS "/{}." OR b.id CONTAINS "|{}|" OR b.id CONTAINS "/{}|") AND a.id <> b.id MERGE (a)-[r:LINKS_TO {{confidence: 1.0, link_type: "{}"}}]->(b)"#,
-                                        chunk.id, emb_event.source_id, ref_filename, ref_filename, ref_filename, ref_filename, link_type
+                                        r#"MATCH (a:Vector_Chunk {{id: "{}"}}) MATCH (b:Vector_Chunk) WHERE (b.id CONTAINS "|{}." OR b.id CONTAINS "/{}." OR b.id CONTAINS "|{}|" OR b.id CONTAINS "/{}|") AND a.id <> b.id MERGE (a)-[r:LINKS_TO {{confidence: 1.0, link_type: "{}"}}]->(b)"#,
+                                        chunk.id, ref_filename, ref_filename, ref_filename, ref_filename, link_type
                                     );
                                     if let Err(e) = user_graph.execute_query(&query).await {
                                         debug!("[LINKS_TO] Forward link query failed for {} -> {}: {}", chunk.id, ref_filename, e);
@@ -479,8 +435,8 @@ impl UnifiedEventConsumer {
                     // Reverse linking: find existing chunks that reference THIS chunk's filename
                     if !chunk_filename.is_empty() {
                         let reverse_query = format!(
-                            r#"MATCH (b:Vector_Chunk {{id: "{}"}}) MATCH (a:Vector_Chunk) WHERE a.source_id = "{}" AND a.id <> "{}" AND a.content CONTAINS "{}" MERGE (a)-[r:LINKS_TO {{confidence: 0.9, link_type: "reverse_content_match"}}]->(b)"#,
-                            chunk.id, emb_event.source_id, chunk.id, chunk_filename
+                            r#"MATCH (b:Vector_Chunk {{id: "{}"}}) MATCH (a:Vector_Chunk) WHERE a.id <> "{}" AND a.content CONTAINS "{}" MERGE (a)-[r:LINKS_TO {{confidence: 0.9, link_type: "reverse_content_match"}}]->(b)"#,
+                            chunk.id, chunk.id, chunk_filename
                         );
                         if let Err(e) = user_graph.execute_query(&reverse_query).await {
                             debug!("[LINKS_TO] Reverse link query failed for {}: {}", chunk_filename, e);
