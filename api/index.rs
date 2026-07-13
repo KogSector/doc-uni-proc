@@ -68,6 +68,15 @@ async fn main() -> anyhow::Result<()> {
         falkordb_storage.clone(),
     ).await?);
 
+    let consumer_processor = processor.clone();
+    tokio::spawn(async move {
+        tracing::info!("Initializing Kafka event consumer...");
+        let consumer = unified_processor_lib::graph::consumer::UnifiedEventConsumer::new(consumer_processor);
+        if let Err(e) = consumer.start().await {
+            tracing::error!("Kafka consumer failed to start: {}", e);
+        }
+    });
+
 
 
     let auth_layer = unified_processor_lib::infra::middleware::AxumAuthLayer::with_grpc(

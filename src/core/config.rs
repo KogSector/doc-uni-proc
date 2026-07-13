@@ -165,7 +165,7 @@ impl KafkaConfig {
             bootstrap_servers: std::env::var("KAFKA_BOOTSTRAP_SERVERS")
                 .map_err(|_| "KAFKA_BOOTSTRAP_SERVERS must be set".to_string())?,
             group_id: std::env::var("UNIFIED_PROCESSOR_KAFKA_GROUP_ID")
-                .unwrap_or_else(|_| "unified-processor-group".to_string()),
+                .unwrap_or_else(|_| "doc-uni-proc-group".to_string()),
             client_id: std::env::var("KAFKA_CLIENT_ID")
                 .unwrap_or_else(|_| "unified-processor".to_string()),
             auto_offset_reset: std::env::var("KAFKA_AUTO_OFFSET_RESET")

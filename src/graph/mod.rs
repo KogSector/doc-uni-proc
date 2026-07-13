@@ -7,6 +7,7 @@ pub mod chunk;
 pub mod episode;
 
 pub mod correlation;
+pub mod consumer;
 
 
 pub use chunk::{

@@ -981,6 +981,22 @@ impl FalkordbStorage {
 
     // ─── Write operations ────────────────────────────────────────────────────
 
+    pub async fn update_chunk_embedding(
+        &self,
+        chunk_id: &str,
+        embedding: &[f32],
+    ) -> Result<()> {
+        let embedding_str = format!("{:?}", embedding);
+        let cypher = format!(
+            r#"MATCH (c:Vector_Chunk {{id: "{chunk_id}"}})
+               SET c.embeddings = vecf32({embedding_str})
+            "#
+        );
+        self.execute_query(&cypher).await?;
+        Ok(())
+    }
+
+
     pub async fn store_chunk_with_embedding(
         &self,
         chunk_id: &str,
@@ -1393,7 +1409,20 @@ impl FalkordbStorage {
         Ok(())
     }
 
-    // ─── Read operations ─────────────────────────────────────────────────────
+    // ─── Search / Graph Traversal ────────────────────────────────────────────
+
+    pub async fn get_chunk_content(&self, chunk_id: &str) -> Result<Option<String>> {
+        let chunk_id_esc = chunk_id.replace('"', "\\\"");
+        let cypher = format!(r#"MATCH (c:Vector_Chunk {{id: "{chunk_id_esc}"}}) RETURN c.content AS content"#);
+        let res = self.execute_query(&cypher).await?;
+        let parsed = parse_graphdb_response(res, &["content"]);
+        if let Some(first) = parsed.first() {
+            if let Some(content) = first.get("content").and_then(|v| v.as_str()) {
+                return Ok(Some(content.to_string()));
+            }
+        }
+        Ok(None)
+    }
 
     pub async fn get_chunks_by_source(&self, source_id: &str, owner_id: &str) -> Result<Vec<Value>> {
         let owner_id_esc = owner_id.replace('"', "\\\"");
@@ -1413,19 +1442,6 @@ impl FalkordbStorage {
 
         let res = self.execute_query(&cypher).await?;
         Ok(parse_graphdb_response(res, &["chunk_id", "content", "chunk_type", "metadata", "model", "created_at"]))
-    }
-
-    pub async fn get_chunk_content(&self, chunk_id: &str) -> Result<Option<String>> {
-        let chunk_id_esc = chunk_id.replace('"', "\\\"");
-        let cypher = format!(r#"MATCH (c:Vector_Chunk {{id: "{chunk_id_esc}"}}) RETURN c.content AS content"#);
-        let res = self.execute_query(&cypher).await?;
-        let parsed = parse_graphdb_response(res, &["content"]);
-        if let Some(first) = parsed.first() {
-            if let Some(content) = first.get("content").and_then(|v| v.as_str()) {
-                return Ok(Some(content.to_string()));
-            }
-        }
-        Ok(None)
     }
 
 

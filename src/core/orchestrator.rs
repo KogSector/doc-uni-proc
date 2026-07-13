@@ -913,6 +913,27 @@ impl UnifiedProcessor {
         tracing::info!("extract_and_store_relationships completed successfully for source_id={}", source_id);
         Ok(())
     }
+
+    /// Get chunk content by chunk ID.
+    /// First checks the in-memory cache, then falls back to FalkorDB.
+    pub async fn get_chunk_content(&self, chunk_id: &str, user_id: &str) -> Result<String> {
+        // Check in-memory cache first
+        {
+            let cache = self.chunk_content_cache.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some(content) = cache.get(chunk_id) {
+                return Ok(content.clone());
+            }
+        }
+        
+        tracing::warn!("Chunk not found in in-memory cache, falling back to FalkorDB: {}", chunk_id);
+        let user_graph = self.falkordb_storage.with_user_graph(user_id);
+        
+        match user_graph.get_chunk_content(chunk_id).await {
+            Ok(Some(content)) => Ok(content),
+            Ok(None) => Err(ProcessorError::NotFound(format!("Chunk not found in FalkorDB: {}", chunk_id))),
+            Err(e) => Err(ProcessorError::DatabaseError(format!("Failed to get chunk from FalkorDB: {}", e))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
