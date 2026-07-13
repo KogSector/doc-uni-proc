@@ -287,8 +287,8 @@ impl UnifiedEventConsumer {
                 );
 
                 let repo_name_str = emb_event.repo_name.as_deref().unwrap_or(&emb_event.source_id);
-                let repo_file_path = format!("{}/{}", repo_name_str, chunk.file_id);
-                let language_str = chunk.language.as_deref().unwrap_or("unknown");
+                let _repo_file_path = format!("{}/{}", repo_name_str, chunk.file_id);
+                let _language_str = chunk.language.as_deref().unwrap_or("unknown");
 
                 if let Err(e) = user_graph.update_chunk_embedding(
                     &chunk.id,
@@ -465,7 +465,7 @@ impl UnifiedEventConsumer {
                                         for edge in edges {
                                             if let Some(edge_arr) = edge.as_array() {
                                                 if edge_arr.len() == 2 {
-                                                    if let (Some(target_chunk_id), Some(score)) = (edge_arr[0].as_str(), edge_arr[1].as_f64()) {
+                                                    if let (Some(target_chunk_id), Some(_score)) = (edge_arr[0].as_str(), edge_arr[1].as_f64()) {
                                                         // Architecture Rule: fast-fetcher is strictly responsible for generating cross-graph edges.
                                                         // We no longer write the SIMILAR_TO edge here. fast-fetcher will handle it.
                                                         debug!("[fast-fetcher] Delegated SIMILAR_TO edge creation between {} and {} to fast-fetcher", chunk.id, target_chunk_id);

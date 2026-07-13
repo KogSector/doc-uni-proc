@@ -150,7 +150,7 @@ impl Default for PerformanceConfig {
 impl ChunkingConfig {
     /// Load from environment variables
     pub fn from_env() -> Self {
-        let mut config = Self::default();
+        let config = Self::default();
         
         // Load Agents Config
         // Agents are REQUIRED in fail-fast mode

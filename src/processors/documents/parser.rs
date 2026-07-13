@@ -39,13 +39,13 @@ pub struct PipelineTable {
 }
 
 pub struct DocumentParser {
-    python_processor_enabled: bool,
+    _python_processor_enabled: bool,
 }
 
 impl DocumentParser {
     pub fn new(python_processor_enabled: bool) -> Result<Self> {
         Ok(Self {
-            python_processor_enabled,
+            _python_processor_enabled: python_processor_enabled,
         })
     }
 

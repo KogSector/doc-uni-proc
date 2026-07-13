@@ -249,16 +249,16 @@ impl ChunkingStrategy for HybridChunker {
 
         
         let raw_chunks = self.chunk_content(content, config);
-        let total_chunks = raw_chunks.len();
+        let _total_chunks = raw_chunks.len();
         
-        let type_desc = match &chunk_type {
+        let _type_desc = match &chunk_type {
             ChunkType::Code { language, .. } => format!("Language: {}", language),
             ChunkType::Document { format, .. } => format!("Format: {}", format),
             ChunkType::Web { url, .. } => format!("URL: {}", url),
             _ => "Type: Unknown".to_string(),
         };
         
-        for (i, c_text) in raw_chunks.into_iter().enumerate() {
+        for (_i, c_text) in raw_chunks.into_iter().enumerate() {
             let enriched_content = c_text.clone();
 
             let start_byte = content.find(&c_text).unwrap_or(0);

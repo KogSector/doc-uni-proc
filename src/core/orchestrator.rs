@@ -205,7 +205,7 @@ pub struct WebProcessingResult {
 }
 
 pub struct UnifiedProcessor {
-    config: Config,
+    _config: Config,
     pub document_parser: DocumentParser,
     pub postgres_storage: Arc<PostgresStorage>,
     graph_sync: Arc<GraphSync>,
@@ -246,7 +246,7 @@ impl UnifiedProcessor {
 
 
         Ok(Self {
-            config,
+            _config: config,
             document_parser,
             postgres_storage,
             graph_sync,
@@ -265,7 +265,7 @@ impl UnifiedProcessor {
     // ─── Legacy file processing (kept for gRPC health checks & direct calls) ──
     
     /// Process a single file (used by gRPC endpoint for backward compatibility)
-    pub async fn process_file(&self, content: &str, is_base64: bool, filename: &str, source_id: &str, repo_name: &str, user_id: &str) -> Result<ProcessedData> {
+    pub async fn process_file(&self, content: &str, is_base64: bool, filename: &str, source_id: &str, _repo_name: &str, user_id: &str) -> Result<ProcessedData> {
         let start_time = std::time::Instant::now();
         let file_id = Uuid::new_v4();
         
@@ -545,7 +545,7 @@ impl UnifiedProcessor {
     fn detect_content_type(&self, filename: &str) -> ContentType {
         // DSA: O(1) HashSet lookup replaces O(n) linear array scan.
         // LazyLock ensures the set is built exactly once across all calls.
-        static CODE_EXTENSIONS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+        static _CODE_EXTENSIONS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
             [
                 "rs", "py", "js", "jsx", "ts", "tsx", "go", "java",
                 "c", "cpp", "cxx", "cc", "h", "hpp", "cs", "rb",
@@ -877,7 +877,7 @@ impl UnifiedProcessor {
         
         // ── Step 2: Structural relationship extraction (source-agnostic router) ──
         tracing::info!("Starting structural relationship extraction for {} chunks", chunk_count);
-        let mut relationships = self.relationship_router.extract_all(chunks);
+        let relationships = self.relationship_router.extract_all(chunks);
 
 
 
