@@ -1022,6 +1022,10 @@ impl FalkordbStorage {
         let repo_file_path_esc = repo_file_path.replace('\\', "\\\\").replace('"', "\\\"");
         let language_esc = language.replace('\\', "\\\\").replace('"', "\\\"");
         
+        let file_name = std::path::Path::new(repo_file_path).file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let file_name_esc = file_name.replace('\\', "\\\\").replace('"', "\\\"");
+        let repository_name_esc = source_id.replace('\\', "\\\\").replace('"', "\\\"");
+        
         let embedding_str = format!("{:?}", embedding); // Standard [f32, f32, ...] format
         
         // Build the embedding clause conditionally: skip setting `c.embedding` when
@@ -1046,6 +1050,8 @@ impl FalkordbStorage {
                    c.model       = "{model}",
                    c.owner_id    = "{owner_id_esc}",
                    c.repo_file_path = "{repo_file_path_esc}",
+                   c.file_name   = "{file_name_esc}",
+                   c.repository_name = "{repository_name_esc}",
                    c.language    = "{language_esc}",
                    c.updated_at  = {now}
             "#,
@@ -1058,6 +1064,8 @@ impl FalkordbStorage {
             model = model,
             owner_id_esc = owner_id_esc,
             repo_file_path_esc = repo_file_path_esc,
+            file_name_esc = file_name_esc,
+            repository_name_esc = repository_name_esc,
             language_esc = language_esc,
             now = now
         );

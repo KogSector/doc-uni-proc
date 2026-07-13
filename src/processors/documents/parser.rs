@@ -115,21 +115,16 @@ pub fn build_document_chunks(
         .map(|s| format!("{} {}", "#".repeat(s.level as usize), s.heading))
         .collect();
 
-    let page_count = parsed.metadata.get("page_count")
+    let _page_count = parsed.metadata.get("page_count")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    let word_count = parsed.metadata.get("word_count")
+    let _word_count = parsed.metadata.get("word_count")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
     let overview_text = format!(
-        "# {}\n\nFile: {}\nPages: {}\nWords: {}\nSections: {}\nTables: {}\n\n## Document Structure\n{}\n\n---\n\n",
+        "# {}\n\n## Document Structure\n{}\n\n---\n\n",
         parsed.title,
-        filename,
-        page_count,
-        word_count,
-        parsed.sections.len(),
-        parsed.tables.len(),
         heading_outline.join("\n"),
     );
 

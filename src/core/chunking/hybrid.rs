@@ -259,10 +259,7 @@ impl ChunkingStrategy for HybridChunker {
         };
         
         for (i, c_text) in raw_chunks.into_iter().enumerate() {
-            let enriched_content = format!(
-                "Source File: {}\n{}\nPart {} of {}\n---\n{}",
-                filename, type_desc, i + 1, total_chunks, c_text
-            );
+            let enriched_content = c_text.clone();
 
             let start_byte = content.find(&c_text).unwrap_or(0);
             let end_byte = start_byte + c_text.len();
