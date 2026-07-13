@@ -421,8 +421,8 @@ impl UnifiedEventConsumer {
                                     }
 
                                     let query = format!(
-                                        r#"MATCH (a:Vector_Chunk {{id: "{}"}}) MATCH (b:Vector_Chunk) WHERE (b.id CONTAINS "|{}." OR b.id CONTAINS "/{}." OR b.id CONTAINS "|{}|" OR b.id CONTAINS "/{}|") AND a.id <> b.id MERGE (a)-[r:LINKS_TO {{confidence: 1.0, link_type: "{}"}}]->(b)"#,
-                                        chunk.id, ref_filename, ref_filename, ref_filename, ref_filename, link_type
+                                        r#"MATCH (a:Vector_Chunk {{id: "{}"}}) MATCH (b:Vector_Chunk) WHERE b.source_id = "{}" AND (b.id CONTAINS "|{}." OR b.id CONTAINS "/{}." OR b.id CONTAINS "|{}|" OR b.id CONTAINS "/{}|") AND a.id <> b.id MERGE (a)-[r:LINKS_TO {{confidence: 1.0, link_type: "{}"}}]->(b)"#,
+                                        chunk.id, emb_event.source_id, ref_filename, ref_filename, ref_filename, ref_filename, link_type
                                     );
                                     if let Err(e) = user_graph.execute_query(&query).await {
                                         debug!("[LINKS_TO] Forward link query failed for {} -> {}: {}", chunk.id, ref_filename, e);
@@ -435,8 +435,8 @@ impl UnifiedEventConsumer {
                     // Reverse linking: find existing chunks that reference THIS chunk's filename
                     if !chunk_filename.is_empty() {
                         let reverse_query = format!(
-                            r#"MATCH (b:Vector_Chunk {{id: "{}"}}) MATCH (a:Vector_Chunk) WHERE a.id <> "{}" AND a.content CONTAINS "{}" MERGE (a)-[r:LINKS_TO {{confidence: 0.9, link_type: "reverse_content_match"}}]->(b)"#,
-                            chunk.id, chunk.id, chunk_filename
+                            r#"MATCH (b:Vector_Chunk {{id: "{}"}}) MATCH (a:Vector_Chunk) WHERE a.source_id = "{}" AND a.id <> "{}" AND a.content CONTAINS "{}" MERGE (a)-[r:LINKS_TO {{confidence: 0.9, link_type: "reverse_content_match"}}]->(b)"#,
+                            chunk.id, emb_event.source_id, chunk.id, chunk_filename
                         );
                         if let Err(e) = user_graph.execute_query(&reverse_query).await {
                             debug!("[LINKS_TO] Reverse link query failed for {}: {}", chunk_filename, e);
