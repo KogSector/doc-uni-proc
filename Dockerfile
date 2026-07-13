@@ -37,39 +37,22 @@ WORKDIR /app
 # ---------------------------------------------------------------------------
 COPY Cargo.toml Cargo.lock* ./
 
-# Build a minimal stub that mirrors lib.rs module layout so cargo can
-# compile all crate dependencies without the real source files.
+# Build a minimal stub that mirrors the actual lib.rs module layout so cargo
+# can compile all crate dependencies without the real source files.
 RUN mkdir -p \
         api \
-        src/api \
         src/core \
-        src/documents \
-        src/codebase \
-        src/db \
-        src/chunking/agentic \
-        src/web \
-        src/relationships \
-        src/events \
-        src/storage \
-        src/search \
-        src/proto && \
+        src/processors \
+        src/infra \
+        src/graph \
+        src/utils && \
     echo 'fn main() {}' > api/index.rs && \
-    echo 'fn main() {}' > src/main.rs && \
-    printf 'pub mod api;\npub mod core;\npub mod documents;\npub mod codebase;\npub mod db;\npub mod chunking;\npub mod web;\npub mod relationships;\npub mod storage;\npub mod search;\npub mod grpc_server;\npub mod proto;\n' > src/lib.rs && \
-    echo 'pub mod agentic;' > src/chunking/mod.rs && \
+    printf 'pub mod core;\npub mod processors;\npub mod infra;\npub mod graph;\n' > src/lib.rs && \
     touch \
-        src/api/mod.rs \
         src/core/mod.rs \
-        src/documents/mod.rs \
-        src/codebase/mod.rs \
-        src/db/mod.rs \
-        src/chunking/agentic/mod.rs \
-        src/web/mod.rs \
-        src/relationships/mod.rs \
-        src/storage/mod.rs \
-        src/search/mod.rs \
-        src/grpc_server.rs \
-        src/proto/mod.rs
+        src/processors/mod.rs \
+        src/infra/mod.rs \
+        src/graph/mod.rs
 
 # Cache dependencies
 RUN cargo build --release 2>/dev/null; \
@@ -83,7 +66,7 @@ RUN rm -rf src/* api/*
 COPY src/ ./src/
 COPY api/ ./api/
 
-RUN cargo build --release --features kafka
+RUN cargo build --release
 
 # ==============================================================================
 # Stage 2: Python dependencies
