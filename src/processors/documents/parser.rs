@@ -122,8 +122,8 @@ pub fn build_document_chunks(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    let overview_text = format!(
-        "# {}\n\nFile: {}\nPages: {}\nWords: {}\nSections: {}\nTables: {}\n\n## Document Structure\n{}",
+    let mut overview_text = format!(
+        "# {}\n\nFile: {}\nPages: {}\nWords: {}\nSections: {}\nTables: {}\n\n## Document Structure\n{}\n\n---\n\n",
         parsed.title,
         filename,
         page_count,
@@ -133,30 +133,25 @@ pub fn build_document_chunks(
         heading_outline.join("\n"),
     );
 
-    let overview_chunk = Chunk::new(
-        source_id.to_string(),
-        filename.to_string(),
-        overview_text,
-        ChunkType::Document {
-            format: ext.clone(),
-            semantic_type: DocumentSemanticType::DocumentOverview,
-        },
-        ChunkLevel::Overview,
-    ).with_confidence(1.0);
+    // Track whether we've prepended the overview metadata to the first chunk
+    let mut overview_prepended = false;
 
-    chunks.push(overview_chunk);
-
-    // 2. Section chunks
+    // 1. Section chunks
     for section in &parsed.sections {
         if section.content.trim().is_empty() {
             continue;
         }
 
-        let section_header = if section.heading.is_empty() {
+        let mut section_header = if section.heading.is_empty() {
             String::new()
         } else {
             format!("{} {}\n\n", "#".repeat(section.level as usize), section.heading)
         };
+        
+        if !overview_prepended {
+            section_header = format!("{}{}", overview_text, section_header);
+            overview_prepended = true;
+        }
 
         // If the section is small enough, keep it as one chunk
         if section.content.len() <= MAX_SECTION_CHUNK_CHARS {
@@ -173,14 +168,27 @@ pub fn build_document_chunks(
             ).with_confidence(0.95);
             chunks.push(chunk);
         } else {
-            // Split long sections with a more robust algorithm
+            // Split long sections with an algorithm that balances chunk sizes
             fn chunk_text(text: &str, max_len: usize) -> Vec<String> {
+                let text_len = text.len();
+                if text_len <= max_len {
+                    return vec![text.to_string()];
+                }
+                
+                // Calculate ideal chunk size to ensure chunks are evenly sized
+                let num_chunks = std::cmp::max(1, (text_len + max_len - 1) / max_len);
+                let target_len = text_len / num_chunks;
+                
+                // Add a small tolerance so we don't split unnaturally
+                let split_threshold = std::cmp::min(target_len + (target_len as f64 * 0.15) as usize, max_len);
+                
                 let mut results = Vec::new();
                 let mut current = String::new();
                 
                 for p in text.split("\n\n") {
                     if p.len() <= max_len {
-                        if current.len() + p.len() + 2 > max_len && !current.is_empty() {
+                        let expected_len = current.len() + p.len() + 2;
+                        if expected_len > split_threshold && !current.is_empty() {
                             results.push(current.clone());
                             current = p.to_string();
                         } else {
@@ -188,9 +196,11 @@ pub fn build_document_chunks(
                             current.push_str(p);
                         }
                     } else {
+                        // For paragraphs larger than max_len, recursively split by '\n' and then chars
                         for l in p.split('\n') {
                             if l.len() <= max_len {
-                                if current.len() + l.len() + 1 > max_len && !current.is_empty() {
+                                let expected_len = current.len() + l.len() + 1;
+                                if expected_len > split_threshold && !current.is_empty() {
                                     results.push(current.clone());
                                     current = l.to_string();
                                 } else {
@@ -201,7 +211,7 @@ pub fn build_document_chunks(
                                 let mut chars = l.chars().peekable();
                                 while chars.peek().is_some() {
                                     let chunk_part: String = chars.by_ref().take(max_len).collect();
-                                    if current.len() + chunk_part.len() > max_len && !current.is_empty() {
+                                    if current.len() + chunk_part.len() > split_threshold && !current.is_empty() {
                                         results.push(current.clone());
                                         current = chunk_part;
                                     } else {
