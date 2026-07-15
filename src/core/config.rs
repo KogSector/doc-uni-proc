@@ -183,7 +183,8 @@ impl KafkaConfig {
 impl Config {
     pub fn from_env() -> crate::core::Result<Self> {
         let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-        let port = std::env::var("DOC_UNI_PROC_PORT")
+        let port = std::env::var("PORT")
+            .or_else(|_| std::env::var("DOC_UNI_PROC_PORT"))
             .or_else(|_| std::env::var("HTTP_PORT"))
             .unwrap_or_else(|_| "8090".to_string())
             .parse()
@@ -197,7 +198,8 @@ impl Config {
         
         let auth_middleware_url = std::env::var("AUTH_MIDDLEWARE_URL")
             .map_err(|_| crate::core::error::ProcessorError::ConfigError("AUTH_MIDDLEWARE_URL must be set".to_string()))?;
-        let auth_grpc_url = std::env::var("AUTH_GRPC_URL").expect("AUTH_GRPC_URL must be set");
+        let auth_grpc_url = std::env::var("AUTH_GRPC_URL")
+            .map_err(|_| crate::core::error::ProcessorError::ConfigError("AUTH_GRPC_URL must be set".to_string()))?;
         let workers = std::env::var("WORKERS")
             .unwrap_or_else(|_| "4".to_string())
             .parse()
