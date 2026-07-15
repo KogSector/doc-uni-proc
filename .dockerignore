@@ -2,9 +2,7 @@
 
 target/
 .env
-!/.env.map
-.env.secret
-.env.local
+.env.*
 __pycache__/
 .venv/
 .git/
