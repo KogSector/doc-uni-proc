@@ -139,6 +139,7 @@ COPY --from=rust-builder --chown=appuser:appgroup /app/target/release/unified-pr
 
 # Copy application source so pyo3 can import the Python document processor
 COPY --chown=appuser:appgroup src/ ./src/
+COPY --chown=appuser:appgroup .env.map ./.env.map
 
 # Ensure the appuser owns the working directory
 RUN chown -R appuser:appgroup /app
