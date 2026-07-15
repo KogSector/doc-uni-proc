@@ -195,7 +195,7 @@ impl UnifiedEventConsumer {
     }
 
     async fn start_consumer(&self, bootstrap_servers: &str, processor: Arc<UnifiedProcessor>) -> anyhow::Result<()> {
-        let group_id = std::env::var("UNIFIED_PROCESSOR_KAFKA_GROUP_ID")
+        let group_id = std::env::var("DOC_UNI_PROC_KAFKA_GROUP_ID")
             .unwrap_or_else(|_| "doc-uni-proc-group".to_string());
         let consumer = EventConsumer::new(bootstrap_servers, &group_id)
             .map_err(|e| anyhow::anyhow!("Failed to create Kafka consumer: {}", e))?;
