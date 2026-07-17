@@ -143,7 +143,7 @@ COPY --chown=appuser:appgroup src/ ./src/
 # Ensure the appuser owns the working directory
 RUN chown -R appuser:appgroup /app
 
-ENV PORT=8090
+ENV PORT=10000
 
 # SECURITY: Switch to the non-root user
 USER appuser
@@ -152,7 +152,7 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
-EXPOSE 8090
+EXPOSE 10000
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["unified-processor"]
