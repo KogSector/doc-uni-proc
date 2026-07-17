@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| "unified_processor_lib=debug,unified_processor=debug,tower_http=debug".into()))
         .with(
             tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stdout)
+                .with_writer(std::io::stderr)
                 .pretty()
         )
         .with(
