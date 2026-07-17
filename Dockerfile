@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     cmake \
     build-essential \
-    libsasl2-dev \
     librdkafka-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -116,7 +115,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libssl3 \
     librdkafka1 \
-    libsasl2-2 \
     libgomp1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
