@@ -152,7 +152,7 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
-EXPOSE 8090 3019 3001
+EXPOSE 8090
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["unified-processor"]
