@@ -2,12 +2,12 @@
 //!
 //! gRPC-based processing pipeline:
 //! 1. Receive from: data-connector via gRPC calls
-//! 2. Process: clone repo / download doc → AST analysis → intelligent chunking
+//! 2. Process: clone repo / download doc â†’ AST analysis â†’ intelligent chunking
 //! 3. Store: chunks in local database
 //! 4. Cleanup: delete temp content after processing
 
 use crate::core::{Config, Result, ProcessorError};
-use crate::processors::documents::DocumentParser;
+use crate::processors::DocumentParser;
 
 use crate::infra::storage::{PostgresStorage, GraphSync};
 use crate::graph::extractors::SourceRelationshipRouter;
@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, LazyLock};
 use uuid::Uuid;
 
-// ─── Data types ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Data types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessedData {
@@ -146,7 +146,7 @@ pub struct AstSummary {
     pub node_types: std::collections::HashMap<String, usize>,
 }
 
-// ─── Kafka message types ────────────────────────────────────────────────────
+// â”€â”€â”€ Kafka message types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 
@@ -191,7 +191,7 @@ pub struct WebProcessingRequest {
 
 
 
-// ─── Orchestrator ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Orchestrator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 
@@ -215,7 +215,7 @@ pub struct UnifiedProcessor {
 
 
     pub falkordb_storage: Arc<crate::infra::storage::FalkordbStorage>,
-    /// In-memory cache: chunk_id → content, populated before Kafka publish,
+    /// In-memory cache: chunk_id â†’ content, populated before Kafka publish,
     /// consumed by the embedding consumer to avoid PostgreSQL dependency.
     pub chunk_content_cache: Arc<Mutex<HashMap<String, String>>>,
 }
@@ -262,7 +262,7 @@ impl UnifiedProcessor {
 
 
 
-    // ─── Legacy file processing (kept for gRPC health checks & direct calls) ──
+    // â”€â”€â”€ Legacy file processing (kept for gRPC health checks & direct calls) â”€â”€
     
     /// Process a single file (used by gRPC endpoint for backward compatibility)
     pub async fn process_file(&self, content: &str, is_base64: bool, filename: &str, source_id: &str, _repo_name: &str, user_id: &str) -> Result<ProcessedData> {
@@ -395,7 +395,7 @@ impl UnifiedProcessor {
     }
     
     
-    // ─── Internal helpers ───────────────────────────────────────────────
+    // â”€â”€â”€ Internal helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     
     /// Generate chunks from file content
     pub(crate) async fn generate_chunks(
@@ -450,7 +450,7 @@ impl UnifiedProcessor {
 
         let result = match self.document_parser.process_document_file(file_path.to_str().unwrap()).await {
             Ok(document_data) => {
-                let chunks = crate::processors::documents::parser::build_document_chunks(&document_data, filename, source_id);
+                let chunks = crate::processors::parser::build_document_chunks(&document_data, filename, source_id);
                 (ProcessingResult {
                     success: true,
                     processing_time_ms: 0,
@@ -717,7 +717,7 @@ impl UnifiedProcessor {
         let chunks = chunks_to_process;
         let chunk_count = chunks.len();
 
-        // ── Step 1: Cache chunk content in-memory so the embedding consumer can
+        // â”€â”€ Step 1: Cache chunk content in-memory so the embedding consumer can
         //           look it up by chunk_id without needing a PostgreSQL `chunks` table.
         {
             let mut cache = self.chunk_content_cache.lock().unwrap_or_else(|p| p.into_inner());
@@ -730,7 +730,7 @@ impl UnifiedProcessor {
 
 
 
-        // ── Step 2: Send chunks to embeddings-service via Kafka for embedding generation ──
+        // â”€â”€ Step 2: Send chunks to embeddings-service via Kafka for embedding generation â”€â”€
         // NOTE: This is best-effort. If the embeddings-service is down, chunks are still
         // stored directly in FalkorDB (Step 2.5 below). When the embeddings callback
         // arrives later, it will MERGE-update the node with the actual embedding vector.
@@ -797,7 +797,7 @@ impl UnifiedProcessor {
                          Chunks will still be stored directly in FalkorDB without embeddings.",
                         batch_idx, source_id, e
                     );
-                    // Don't return error — continue to direct FalkorDB storage below
+                    // Don't return error â€” continue to direct FalkorDB storage below
                     break;
                 }
             }
@@ -808,7 +808,7 @@ impl UnifiedProcessor {
             );
         }
 
-        // ── Step 1.5: Store chunks DIRECTLY in FalkorDB (without embeddings) ──
+        // â”€â”€ Step 1.5: Store chunks DIRECTLY in FalkorDB (without embeddings) â”€â”€
         // This ensures the knowledge graph is always populated, regardless of whether
         // the embeddings-service processes them. Uses MERGE so the embeddings callback
         // can update the node with the actual embedding vector later.
@@ -828,7 +828,7 @@ impl UnifiedProcessor {
                     "level": format!("{:?}", c.level),
                     "user_id": user_id,
                 });
-                // Empty embedding — will be filled by the embeddings callback if it arrives
+                // Empty embedding â€” will be filled by the embeddings callback if it arrives
                 let empty_embedding: Vec<f32> = vec![];
                 let language_str = match &c.chunk_type {
                     crate::core::chunking::types::ChunkType::Code { language, .. } => language.clone(),
@@ -875,7 +875,7 @@ impl UnifiedProcessor {
 
         let user_graph = self.falkordb_storage.with_user_graph(user_id);
         
-        // ── Step 2: Structural relationship extraction (source-agnostic router) ──
+        // â”€â”€ Step 2: Structural relationship extraction (source-agnostic router) â”€â”€
         tracing::info!("Starting structural relationship extraction for {} chunks", chunk_count);
         let relationships = self.relationship_router.extract_all(chunks);
 

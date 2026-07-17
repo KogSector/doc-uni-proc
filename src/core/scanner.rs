@@ -1,13 +1,13 @@
 //! Local shared-volume directory scanner
 //!
-//! Provides `process_local_directory` — called by the `POST /api/v1/process/local` endpoint
+//! Provides `process_local_directory` â€” called by the `POST /api/v1/process/local` endpoint
 //! after `data-connector` downloads a source (git repo or document set) to the shared storage.
 //!
 //! # AKS Portability
 //! The shared volume is mounted at `DOWNLOADS_BASE_PATH` (default `/shared/downloads`):
 //! - **Local dev**: Docker named volume `confuse-downloads`
 //! - **AKS**:       Azure Files PVC `confuse-downloads-pvc`
-//! The mount path is identical in both environments — no code change on deployment.
+//! The mount path is identical in both environments â€” no code change on deployment.
 
 use crate::core::orchestrator::UnifiedProcessor;
 use crate::core::error::ProcessorError;
@@ -83,7 +83,7 @@ impl UnifiedProcessor {
     ) -> Result<()> {
         let start = std::time::Instant::now();
 
-        // ── Path-traversal guard (cross-platform) ───────────────────────────────────
+        // â”€â”€ Path-traversal guard (cross-platform) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         let base_env = std::env::var("DOWNLOADS_BASE_PATH")
             .unwrap_or_else(|_| std::env::temp_dir().join("confuse-downloads").to_string_lossy().to_string());
         let base_path = std::path::PathBuf::from(&base_env);
@@ -105,7 +105,7 @@ impl UnifiedProcessor {
                 "Directory does not exist - cannot process non-existent directory"
             );
             return Err(ProcessorError::InfraError(format!(
-                "Directory inaccessible: {directory_path} — The system cannot find the file specified"
+                "Directory inaccessible: {directory_path} â€” The system cannot find the file specified"
             )));
         }
         
@@ -116,7 +116,7 @@ impl UnifiedProcessor {
                 "Path exists but is not a directory"
             );
             return Err(ProcessorError::InfraError(format!(
-                "Directory inaccessible: {directory_path} — Path is not a directory"
+                "Directory inaccessible: {directory_path} â€” Path is not a directory"
             )));
         }
         
@@ -165,7 +165,7 @@ impl UnifiedProcessor {
             "Starting shared-volume directory scan"
         );
 
-        // ── Collect file paths (blocking walk offloaded to a thread-pool thread) ───
+        // â”€â”€ Collect file paths (blocking walk offloaded to a thread-pool thread) â”€â”€â”€
         let dir_path = std::path::PathBuf::from(directory_path);
         let file_paths = tokio::task::spawn_blocking(move || {
             let mut collected: Vec<std::path::PathBuf> = Vec::new();
@@ -213,14 +213,14 @@ impl UnifiedProcessor {
                 .unwrap_or(false);
 
             if is_document {
-                // ── Pipeline-based structured document parsing ──
+                // â”€â”€ Pipeline-based structured document parsing â”€â”€
                 tracing::info!(path = %relative_path, "Parsing document with pipeline_parser");
 
                 let path_str = file_path.to_string_lossy().to_string();
                 
                 match self.document_parser.process_document_file(&path_str).await {
                     Ok(parsed) => {
-                        let chunks = crate::processors::documents::parser::build_document_chunks(&parsed, &relative_path, source_id);
+                        let chunks = crate::processors::parser::build_document_chunks(&parsed, &relative_path, source_id);
                         total_chunks += chunks.len();
                         processed += 1;
 
@@ -257,7 +257,7 @@ impl UnifiedProcessor {
                     }
                 }
             } else {
-                // ── Non-document files: existing HybridChunker path ──
+                // â”€â”€ Non-document files: existing HybridChunker path â”€â”€
                 let content = match tokio::fs::read_to_string(file_path).await {
                     Ok(c) => c,
                     Err(_) => {

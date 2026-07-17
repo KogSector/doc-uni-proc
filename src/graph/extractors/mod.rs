@@ -19,11 +19,11 @@ mod hierarchical;
 use crate::core::chunking::Chunk;
 use crate::graph::models::ChunkRelationship;
 
-pub use crate::processors::documents::graph::DocumentExtractor;
+pub use crate::processors::graph::DocumentExtractor;
 
 use hierarchical::HierarchicalExtractor;
 
-// ─── Trait ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Trait â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Trait for source-type-specific structural relationship extraction.
 ///
@@ -40,7 +40,7 @@ pub trait SourceRelationshipExtractor: Send + Sync {
     fn extract(&self, chunks: &[Chunk]) -> Vec<ChunkRelationship>;
 }
 
-// ─── Router ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Router â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Routes chunks to the correct source-type extractor and aggregates results.
 ///
