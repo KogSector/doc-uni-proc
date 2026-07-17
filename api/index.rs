@@ -79,10 +79,9 @@ async fn main() -> anyhow::Result<()> {
 
 
 
-    let auth_layer = unified_processor_lib::infra::middleware::AxumAuthLayer::with_grpc(
+    let auth_layer = unified_processor_lib::infra::middleware::AxumAuthLayer::new(
         config.server.auth_middleware_url.clone(),
-        config.server.auth_grpc_url.clone(),
-    ).await;
+    );
 
     let rate_limit = unified_processor_lib::infra::middleware::AxumRateLimitConfig::default_for_service(10000);
 

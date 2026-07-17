@@ -46,7 +46,7 @@ pub async fn zero_trust_middleware(mut request: Request, next: Next) -> Response
     let path = request.uri().path().to_string();
 
     // Skip health/readiness endpoints
-    if path.starts_with("/health") || path == "/status" || path == "/metrics" {
+    if path == "/" || path.starts_with("/health") || path == "/status" || path == "/metrics" {
         return next.run(request).await;
     }
 
