@@ -199,7 +199,7 @@ impl Config {
         let auth_middleware_url = std::env::var("AUTH_MIDDLEWARE_URL")
             .map_err(|_| crate::core::error::ProcessorError::ConfigError("AUTH_MIDDLEWARE_URL must be set".to_string()))?;
         let auth_grpc_url = std::env::var("AUTH_GRPC_URL")
-            .map_err(|_| crate::core::error::ProcessorError::ConfigError("AUTH_GRPC_URL must be set".to_string()))?;
+            .unwrap_or_default();
         let workers = std::env::var("WORKERS")
             .unwrap_or_else(|_| "4".to_string())
             .parse()
