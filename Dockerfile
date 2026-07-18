@@ -145,5 +145,8 @@ RUN chown -R appuser:appgroup /app
 # SECURITY: Switch to the non-root user
 USER appuser
 
+ENV PORT=10000
+EXPOSE 10000
+
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["unified-processor"]

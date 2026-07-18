@@ -49,6 +49,9 @@ async fn main() -> anyhow::Result<()> {
         addr_str
     );
 
+    // Start HTTP server listener EARLY to satisfy Render's port scan
+    let listener = tokio::net::TcpListener::bind(&addr_str).await?;
+    tracing::info!("Unified processor TCP listener bound on {}", addr_str);
 
     // 
     // Initialize FalkorDB storage (Redis protocol, port 6379)
@@ -86,11 +89,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = build_app_router(processor.clone(), auth_layer, rate_limit);
 
-    // Start HTTP server
-    let listener = tokio::net::TcpListener::bind(&addr_str).await?;
-    
-    tracing::info!("Unified processor listening on {}", addr_str);
-    
+    // Start HTTP server (listener was bound early)
     axum::serve(listener, app).await?;
 
     Ok(())
