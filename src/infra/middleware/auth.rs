@@ -82,7 +82,7 @@ impl AxumAuthLayer {
     }
 
     /// Validate a Bearer token against auth-middleware
-    pub async fn verify_token(&self, token: &str) -> Result<AuthenticatedUser, String> {
+    pub async fn verify_token(&self, token: &str) -> Result<AuthenticatedUser, (StatusCode, String)> {
         // Try gRPC first if available
         if let Some(mut client) = self.grpc_client.clone() {
             let mut request = tonic::Request::new(ValidateTokenRequest {
@@ -103,7 +103,7 @@ impl AxumAuthLayer {
                             workspace_id: None,
                         });
                     } else {
-                        return Err(resp.error.unwrap_or_else(|| "Invalid token".to_string()));
+                        return Err((StatusCode::UNAUTHORIZED, resp.error.unwrap_or_else(|| "Invalid token".to_string())));
                     }
                 }
                 Err(e) => {
@@ -121,25 +121,30 @@ impl AxumAuthLayer {
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await
-            .map_err(|e| format!("Auth service request failed: {}", e))?;
+            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Auth service request failed: {}", e)))?;
 
         if !res.status().is_success() {
-            return Err(format!(
-                "Auth service rejected token: {}",
-                res.status()
+            let status = if res.status().is_server_error() {
+                StatusCode::BAD_GATEWAY
+            } else {
+                StatusCode::UNAUTHORIZED
+            };
+            return Err((
+                status,
+                format!("Auth service rejected token: {}", res.status())
             ));
         }
 
         let user: AuthenticatedUser = res
             .json()
             .await
-            .map_err(|e| format!("Failed to parse auth response: {}", e))?;
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse auth response: {}", e)))?;
 
         Ok(user)
     }
 
     /// Validate an API key against auth-middleware
-    pub async fn validate_api_key(&self, key: &str) -> Result<AuthenticatedUser, String> {
+    pub async fn validate_api_key(&self, key: &str) -> Result<AuthenticatedUser, (StatusCode, String)> {
         // Try gRPC first if available
         if let Some(mut client) = self.grpc_client.clone() {
             let mut request = tonic::Request::new(crate::infra::proto::confuse_auth_v1::ValidateApiKeyRequest {
@@ -160,7 +165,7 @@ impl AxumAuthLayer {
                             workspace_id: None,
                         });
                     } else {
-                        return Err(resp.error);
+                        return Err((StatusCode::UNAUTHORIZED, resp.error));
                     }
                 }
                 Err(e) => {
@@ -178,19 +183,24 @@ impl AxumAuthLayer {
             .header("X-API-Key", key)
             .send()
             .await
-            .map_err(|e| format!("Auth service request failed: {}", e))?;
+            .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Auth service request failed: {}", e)))?;
 
         if !res.status().is_success() {
-            return Err(format!(
-                "Auth service rejected API key: {}",
-                res.status()
+            let status = if res.status().is_server_error() {
+                StatusCode::BAD_GATEWAY
+            } else {
+                StatusCode::UNAUTHORIZED
+            };
+            return Err((
+                status,
+                format!("Auth service rejected API key: {}", res.status())
             ));
         }
 
         let user: AuthenticatedUser = res
             .json()
             .await
-            .map_err(|e| format!("Failed to parse auth response: {}", e))?;
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse auth response: {}", e)))?;
 
         Ok(user)
     }
@@ -226,12 +236,13 @@ pub async fn axum_auth_middleware(
 
     let mut user = if let Some(auth_value) = auth_header {
         if let Some(token) = auth_value.strip_prefix("Bearer ") {
-            auth_layer.verify_token(token).await.map_err(|e| {
+            auth_layer.verify_token(token).await.map_err(|(status, e)| {
                 tracing::warn!("Token verification failed: {}", e);
+                let code = if status == StatusCode::UNAUTHORIZED { "UNAUTHORIZED" } else { "AUTH_SERVICE_ERROR" };
                 (
-                    StatusCode::UNAUTHORIZED,
+                    status,
                     Json(serde_json::json!({
-                        "error": { "code": "UNAUTHORIZED", "message": e }
+                        "error": { "code": code, "message": e }
                     })),
                 )
                     .into_response()
@@ -246,12 +257,13 @@ pub async fn axum_auth_middleware(
                 .into_response());
         }
     } else if let Some(key) = api_key {
-        auth_layer.validate_api_key(&key).await.map_err(|e| {
+        auth_layer.validate_api_key(&key).await.map_err(|(status, e)| {
             tracing::warn!("API key validation failed: {}", e);
+            let code = if status == StatusCode::UNAUTHORIZED { "UNAUTHORIZED" } else { "AUTH_SERVICE_ERROR" };
             (
-                StatusCode::UNAUTHORIZED,
+                status,
                 Json(serde_json::json!({
-                    "error": { "code": "UNAUTHORIZED", "message": e }
+                    "error": { "code": code, "message": e }
                 })),
             )
                 .into_response()
