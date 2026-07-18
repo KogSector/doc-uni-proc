@@ -86,7 +86,7 @@ impl FalkordbConfig {
             password: std::env::var("FALKORDB_PASSWORD").ok(),
             use_tls: std::env::var("FALKORDB_USE_TLS")
                 .map(|v| v.to_lowercase() == "true" || v == "1")
-                .unwrap_or(true), // Default to true for cloud endpoints
+                .unwrap_or(false), // Default to false for plaintext endpoints
             embedding_dim: std::env::var("FALKORDB_EMBEDDING_DIM")
                 .unwrap_or_else(|_| "1536".to_string())
                 .parse()

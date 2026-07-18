@@ -50,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // (Listener will be bound after initialization to prevent premature traffic routing) 
+    tracing::info!("Initializing FalkorDB storage at {}:{}", config.falkordb.host, config.falkordb.port);
     // Initialize FalkorDB storage (Redis protocol, port 6379)
     let falkordb_storage = create_falkordb_storage(
         &config.falkordb.host,
@@ -60,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
         config.falkordb.use_tls,
         config.falkordb.embedding_dim,
     ).await?;
+    tracing::info!("Successfully initialized FalkorDB storage");
 
     let processor = Arc::new(UnifiedProcessor::new(
         config.clone(),
