@@ -65,7 +65,8 @@ RUN rm -rf src/* api/*
 COPY src/ ./src/
 COPY api/ ./api/
 
-RUN cargo build --release
+# Force Cargo to invalidate the cache by updating timestamps
+RUN touch src/lib.rs api/index.rs && cargo build --release
 
 # ==============================================================================
 # Stage 2: Python dependencies
