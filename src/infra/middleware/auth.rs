@@ -39,7 +39,7 @@ pub struct AxumAuthLayer {
 impl AxumAuthLayer {
     pub fn new(auth_service_url: String) -> Self {
         let http_client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(60))
             .build()
             .unwrap_or_default();
 
@@ -57,7 +57,7 @@ impl AxumAuthLayer {
         auth_grpc_url: String,
     ) -> Self {
         let http_client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(60))
             .build()
             .unwrap_or_default();
 
