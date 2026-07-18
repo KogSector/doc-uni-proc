@@ -142,14 +142,8 @@ COPY --chown=appuser:appgroup src/ ./src/
 # Ensure the appuser owns the working directory
 RUN chown -R appuser:appgroup /app
 
-ENV PORT=10000
-
 # SECURITY: Switch to the non-root user
 USER appuser
-
-
-
-EXPOSE 10000
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["unified-processor"]
