@@ -32,7 +32,7 @@ pub fn build_app_router(
 
         // Integration endpoints
         .route("/api/v1/graph/sync", post(trigger_graph_sync))
-        .route("/api/v1/status/{source_id}", get(get_processing_status))
+        .route("/api/v1/status/:source_id", get(get_processing_status))
         // Legacy compatibility endpoints
         .route("/api/v1/process", post(process_document))
         .layer(axum::middleware::from_fn_with_state(rate_limit.clone(), crate::infra::middleware::axum_rate_limit_middleware))
