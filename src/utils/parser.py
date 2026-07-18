@@ -19,7 +19,6 @@ def parse_document(file_path: str) -> str:
 
     # Strategy 1: Docling
     try:
-        raise Exception("Skipping Docling for debugging hang")
         # pyrefly: ignore [missing-import]
         from docling.document_converter import DocumentConverter
         converter = DocumentConverter()

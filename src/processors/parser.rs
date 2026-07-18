@@ -51,9 +51,55 @@ impl DocumentParser {
 
 
 
-    /// Process a document file through the python pipeline and return structured data
     pub async fn process_document_file(&self, file_path: &str) -> Result<PipelineOutput> {
-        let content = tokio::fs::read_to_string(file_path).await.unwrap_or_else(|_| "Binary or unreadable file".to_string());
+        let extension = self.detect_document_type(file_path);
+        
+        if self._python_processor_enabled {
+            let path = file_path.to_string();
+            let parsed_json = tokio::task::spawn_blocking(move || {
+                pyo3::Python::with_gil(|py| -> std::result::Result<String, String> {
+                    let parser_code = include_str!("../utils/parser.py");
+                    let parser_module = pyo3::types::PyModule::from_code(
+                        py,
+                        parser_code,
+                        "parser.py",
+                        "parser"
+                    ).map_err(|e| e.to_string())?;
+                    let result: String = parser_module
+                        .getattr("parse_document").map_err(|e| e.to_string())?
+                        .call1((&path,)).map_err(|e| e.to_string())?
+                        .extract().map_err(|e| e.to_string())?;
+                    Ok(result)
+                })
+            }).await.unwrap_or_else(|e| Err(e.to_string()));
+            
+            match parsed_json {
+                Ok(json_str) => {
+                    match serde_json::from_str::<PipelineOutput>(&json_str) {
+                        Ok(parsed) => return Ok(parsed),
+                        Err(e) => tracing::error!("Failed to deserialize python parser output: {}", e),
+                    }
+                }
+                Err(e) => tracing::error!("Python parser failed: {}", e),
+            }
+        }
+        
+        // Fallback if python is disabled or fails
+        let content = if extension == "pdf" {
+            let path = file_path.to_string();
+            tokio::task::spawn_blocking(move || {
+                match pdf_extract::extract_text(&path) {
+                    Ok(text) => text,
+                    Err(e) => {
+                        tracing::warn!("Failed to extract PDF text from {}: {}", path, e);
+                        "Binary or unreadable file".to_string()
+                    }
+                }
+            }).await.unwrap_or_else(|_| "Binary or unreadable file".to_string())
+        } else {
+            tokio::fs::read_to_string(file_path).await.unwrap_or_else(|_| "Binary or unreadable file".to_string())
+        };
+
         let title = std::path::Path::new(file_path).file_stem().and_then(|s| s.to_str()).unwrap_or("Document").to_string();
 
         let parsed = PipelineOutput {
