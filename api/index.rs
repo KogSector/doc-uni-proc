@@ -3,7 +3,6 @@
 //! Axum web server providing REST API for document and code processing.
 //! Kafka-based pipeline: chunk → embeddings-service → FalkorDB (via Redis/6379)
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -43,11 +42,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Load configuration
     let config = Config::from_env()?;
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
+    let addr_str = format!("{}:{}", config.server.host, config.server.port);
 
     tracing::info!(
         "Starting unified-processor on {}",
-        addr
+        addr_str
     );
 
 
@@ -88,9 +87,9 @@ async fn main() -> anyhow::Result<()> {
     let app = build_app_router(processor.clone(), auth_layer, rate_limit);
 
     // Start HTTP server
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let listener = tokio::net::TcpListener::bind(&addr_str).await?;
     
-    tracing::info!("Unified processor listening on {}", addr);
+    tracing::info!("Unified processor listening on {}", addr_str);
     
     axum::serve(listener, app).await?;
 
