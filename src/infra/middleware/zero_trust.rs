@@ -53,8 +53,8 @@ pub async fn zero_trust_middleware(mut request: Request, next: Next) -> Response
     // 1. Ensure correlation ID exists (generate if missing)
     let correlation_id = request
         .headers()
-        .get("X-Correlation-Id")
-        .or_else(|| request.headers().get("X-Request-Id"))
+        .get("x-correlation-id")
+        .or_else(|| request.headers().get("x-request-id"))
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
         .unwrap_or_else(|| {
@@ -74,13 +74,13 @@ pub async fn zero_trust_middleware(mut request: Request, next: Next) -> Response
 
     // Inject correlation ID into request for downstream propagation
     request.headers_mut().insert(
-        "X-Correlation-Id",
+        "x-correlation-id",
         HeaderValue::from_str(&correlation_id)
             .unwrap_or_else(|_| HeaderValue::from_static("unknown")),
     );
 
     // 2. Validate request timestamp (prevents replay attacks)
-    if let Some(ts_header) = request.headers().get("X-Request-Timestamp") {
+    if let Some(ts_header) = request.headers().get("x-request-timestamp") {
         if let Ok(ts_str) = ts_header.to_str() {
             if let Ok(ts) = ts_str.parse::<u64>() {
                 let now = SystemTime::now()
@@ -110,7 +110,7 @@ pub async fn zero_trust_middleware(mut request: Request, next: Next) -> Response
     }
 
     // 3. Validate service-to-service identity
-    if let Some(service_name) = request.headers().get("X-Service-Name") {
+    if let Some(service_name) = request.headers().get("x-service-name") {
         let _name = service_name.to_str().unwrap_or("unknown");
         tracing::debug!(
             service = _name,
@@ -128,7 +128,7 @@ pub async fn zero_trust_middleware(mut request: Request, next: Next) -> Response
         {
             let workspace_header = request
                 .headers()
-                .get("X-Workspace-Id")
+                .get("x-workspace-id")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
 
@@ -148,13 +148,13 @@ pub async fn zero_trust_middleware(mut request: Request, next: Next) -> Response
 
     // Add correlation ID to response
     if let Ok(val) = HeaderValue::from_str(&correlation_id) {
-        response.headers_mut().insert("X-Correlation-Id", val);
+        response.headers_mut().insert("x-correlation-id", val);
     }
 
     // Add security context header
     response
         .headers_mut()
-        .insert("X-Zero-Trust", HeaderValue::from_static("enforced"));
+        .insert("x-zero-trust", HeaderValue::from_static("enforced"));
 
     response
 }

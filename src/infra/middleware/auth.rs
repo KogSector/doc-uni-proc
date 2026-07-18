@@ -230,7 +230,7 @@ pub async fn axum_auth_middleware(
     // Extract workspace ID from headers (optional)
     let workspace_id = request
         .headers()
-        .get("X-Workspace-Id")
+        .get("x-workspace-id")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 

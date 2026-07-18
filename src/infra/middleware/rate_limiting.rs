@@ -95,13 +95,13 @@ pub async fn axum_rate_limit_middleware(
 
             // Add rate limit headers
             if let Ok(val) = HeaderValue::from_str(&info.limit.to_string()) {
-                response.headers_mut().insert("X-RateLimit-Limit", val);
+                response.headers_mut().insert("x-ratelimit-limit", val);
             }
             if let Ok(val) = HeaderValue::from_str(&info.remaining.to_string()) {
-                response.headers_mut().insert("X-RateLimit-Remaining", val);
+                response.headers_mut().insert("x-ratelimit-remaining", val);
             }
             if let Ok(val) = HeaderValue::from_str(&info.reset.to_string()) {
-                response.headers_mut().insert("X-RateLimit-Reset", val);
+                response.headers_mut().insert("x-ratelimit-reset", val);
             }
 
             response
@@ -121,10 +121,10 @@ pub async fn axum_rate_limit_middleware(
                 .into_response();
 
             if let Ok(val) = HeaderValue::from_str(&limit.to_string()) {
-                response.headers_mut().insert("X-RateLimit-Limit", val);
+                response.headers_mut().insert("x-ratelimit-limit", val);
             }
             if let Ok(val) = HeaderValue::from_str("0") {
-                response.headers_mut().insert("X-RateLimit-Remaining", val);
+                response.headers_mut().insert("x-ratelimit-remaining", val);
             }
 
             response
@@ -146,14 +146,14 @@ fn get_client_id(request: &Request) -> String {
     // Fall back to IP address
     request
         .headers()
-        .get("X-Forwarded-For")
+        .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
         .or_else(|| {
             request
                 .headers()
-                .get("X-Real-IP")
+                .get("x-real-ip")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string())
         })

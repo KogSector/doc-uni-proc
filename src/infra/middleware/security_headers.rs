@@ -19,41 +19,41 @@ pub async fn security_headers_middleware(
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
 
-    headers.insert("X-Content-Type-Options", HeaderValue::from_static("nosniff"));
-    headers.insert("X-Frame-Options", HeaderValue::from_static("DENY"));
+    headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.insert(
-        "X-XSS-Protection",
+        "x-xss-protection",
         HeaderValue::from_static("1; mode=block"),
     );
     headers.insert(
-        "Strict-Transport-Security",
+        "strict-transport-security",
         HeaderValue::from_static("max-age=31536000; includeSubDomains; preload"),
     );
     headers.insert(
-        "Referrer-Policy",
+        "referrer-policy",
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
     headers.insert(
-        "Permissions-Policy",
+        "permissions-policy",
         HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
     );
     headers.insert(
-        "Content-Security-Policy",
+        "content-security-policy",
         HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'"),
     );
     headers.insert(
-        "Cache-Control",
+        "cache-control",
         HeaderValue::from_static("no-store, no-cache, must-revalidate"),
     );
     headers.insert(
-        "Cross-Origin-Opener-Policy",
+        "cross-origin-opener-policy",
         HeaderValue::from_static("same-origin"),
     );
     headers.insert(
-        "Cross-Origin-Resource-Policy",
+        "cross-origin-resource-policy",
         HeaderValue::from_static("same-origin"),
     );
-    headers.remove("Server");
+    headers.remove("server");
 
     response
 }
