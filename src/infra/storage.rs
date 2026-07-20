@@ -1579,20 +1579,28 @@ pub async fn create_falkordb_storage(
     use_tls: bool,
     _embedding_dim: usize,
 ) -> Result<Arc<FalkordbStorage>> {
-    let auth = if !password.is_empty() {
-        if !username.is_empty() {
-            format!("{}:{}@", username, password)
-        } else {
-            format!(":{}@", password)
+    let redis_info = redis::RedisConnectionInfo {
+        db: 0,
+        username: if username.is_empty() { None } else { Some(username.to_string()) },
+        password: if password.is_empty() { None } else { Some(password.to_string()) },
+    };
+    let addr = if use_tls {
+        redis::ConnectionAddr::TcpTls {
+            host: host.to_string(),
+            port,
+            insecure: false,
+            tls_params: None,
         }
     } else {
-        String::new()
+        redis::ConnectionAddr::Tcp(host.to_string(), port)
     };
-    let scheme = if use_tls { "rediss" } else { "redis" };
-    let uri = format!("{}://{}{}:{}", scheme, auth, host, port);
-    info!("Connecting to FalkorDB at {} (graph: '{}')", uri, graph_name);
+    let conn_info = redis::ConnectionInfo {
+        addr,
+        redis: redis_info,
+    };
+    info!("Connecting to FalkorDB at {}:{} (graph: '{}')", host, port, graph_name);
 
-    let manager = RedisConnectionManager::new(uri).context("Failed to parse redis URL")?;
+    let manager = RedisConnectionManager::new(conn_info).context("Failed to configure redis connection")?;
     
     let mut attempts = 0;
     let max_attempts = 60;

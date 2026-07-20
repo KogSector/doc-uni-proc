@@ -78,15 +78,17 @@ impl FalkordbConfig {
             host: std::env::var("FALKORDB_HOST")
                 .map_err(|_| "FALKORDB_HOST must be set".to_string())?,
             port: std::env::var("FALKORDB_PORT")
-                .unwrap_or_else(|_| "6379".to_string())
+                .unwrap_or_else(|_| "64172".to_string())
                 .parse()
-                .unwrap_or(6379),
+                .unwrap_or(64172),
             username: std::env::var("FALKORDB_USERNAME")
-                .unwrap_or_else(|_| "default".to_string()),
-            password: std::env::var("FALKORDB_PASSWORD").ok(),
+                .unwrap_or_else(|_| "falkordb".to_string()),
+            password: std::env::var("FALKORDB_PASSWORD")
+                .ok()
+                .or_else(|| Some("falkordb".to_string())),
             use_tls: std::env::var("FALKORDB_USE_TLS")
                 .map(|v| v.to_lowercase() == "true" || v == "1")
-                .unwrap_or(false), // Default to false for plaintext endpoints
+                .unwrap_or(true), // Default to true for cloud instance
             embedding_dim: std::env::var("FALKORDB_EMBEDDING_DIM")
                 .unwrap_or_else(|_| "1536".to_string())
                 .parse()
