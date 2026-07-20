@@ -208,7 +208,7 @@ impl UnifiedProcessor {
                 .and_then(|e| e.to_str())
                 .map(|e| {
                     let lower = e.to_lowercase();
-                    matches!(lower.as_str(), "pdf" | "docx" | "pptx" | "doc" | "ppt" | "html" | "htm" | "rtf" | "epub" | "md" | "markdown")
+                    matches!(lower.as_str(), "pdf" | "docx" | "pptx" | "doc" | "ppt" | "rtf" | "epub" | "md" | "markdown")
                 })
                 .unwrap_or(false);
 
