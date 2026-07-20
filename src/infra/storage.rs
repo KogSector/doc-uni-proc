@@ -907,7 +907,13 @@ impl FalkordbStorage {
 
 
     pub async fn execute_query(&self, cypher: &str) -> Result<redis::Value> {
-        let mut conn = self.pool.get().await.context("Failed to get redis connection")?;
+        let mut conn = match self.pool.get().await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("FalkorDB pool get error: {:#}", e);
+                anyhow::bail!("Failed to get redis connection: {}", e);
+            }
+        };
         let res = cmd("GRAPH.QUERY")
             .arg(&self.graph_name)
             .arg(cypher)
@@ -1579,32 +1585,24 @@ pub async fn create_falkordb_storage(
     use_tls: bool,
     _embedding_dim: usize,
 ) -> Result<Arc<FalkordbStorage>> {
-    let redis_info = redis::RedisConnectionInfo {
-        db: 0,
-        username: if username.is_empty() { None } else { Some(username.to_string()) },
-        password: if password.is_empty() { None } else { Some(password.to_string()) },
-    };
-    let addr = if use_tls {
-        redis::ConnectionAddr::TcpTls {
-            host: host.to_string(),
-            port,
-            insecure: false,
-            tls_params: None,
-        }
+    // Construct standard redis:// or rediss:// connection URL
+    let scheme = if use_tls { "rediss" } else { "redis" };
+    let auth = if username.is_empty() && password.is_empty() {
+        "".to_string()
+    } else if username.is_empty() {
+        format!(":{}@", password)
     } else {
-        redis::ConnectionAddr::Tcp(host.to_string(), port)
+        format!("{}:{}@", username, password)
     };
-    let conn_info = redis::ConnectionInfo {
-        addr,
-        redis: redis_info,
-    };
+    
+    let url = format!("{}://{}{}:{}", scheme, auth, host, port);
 
     info!(
         "Building FalkorDB connection pool → {}:{} tls={} user={} graph='{}'",
         host, port, use_tls, username, graph_name
     );
 
-    let manager = RedisConnectionManager::new(conn_info)
+    let manager = RedisConnectionManager::new(url)
         .context("Failed to configure redis connection")?;
 
     // Build the pool with an 8-second connection timeout per attempt.
