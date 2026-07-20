@@ -911,7 +911,7 @@ impl FalkordbStorage {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!("FalkorDB pool get error: {:#}", e);
-                anyhow::bail!("Failed to get redis connection: {}", e);
+                return Err(anyhow::anyhow!("Failed to get redis connection: {}", e).into());
             }
         };
         let res = cmd("GRAPH.QUERY")
