@@ -1598,56 +1598,70 @@ pub async fn create_falkordb_storage(
         addr,
         redis: redis_info,
     };
-    info!("Connecting to FalkorDB at {}:{} (graph: '{}')", host, port, graph_name);
 
-    let manager = RedisConnectionManager::new(conn_info).context("Failed to configure redis connection")?;
-    
-    let mut attempts = 0;
-    let max_attempts = 60;
-    let pool = loop {
-        match Pool::builder().max_size(16).build(manager.clone()).await {
-            Ok(p) => {
-                // Quick test of the connection
-                let is_ok = match p.get().await {
-                    Ok(mut conn) => {
-                        let _: redis::Value = redis::cmd("PING").query_async(&mut *conn).await.unwrap_or(redis::Value::Nil);
-                        true
-                    }
-                    Err(e) => {
-                        tracing::error!("FalkorDB connection test error: {:?}", e);
-                        false
-                    }
-                };
-                if is_ok {
-                    break p;
-                }
-                attempts += 1;
-                if attempts >= max_attempts {
-                    return Err(anyhow::anyhow!("Failed to connect to FalkorDB after {} attempts", max_attempts).into());
-                }
-                warn!("FalkorDB connection test failed, retrying in 5s... ({}/{})", attempts, max_attempts);
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            }
-            Err(e) => {
-                attempts += 1;
-                if attempts >= max_attempts {
-                    return Err(anyhow::anyhow!("Failed to build redis pool after {} attempts: {}", max_attempts, e).into());
-                }
-                warn!("FalkorDB pool build failed, retrying in 5s... ({}/{})", attempts, max_attempts);
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            }
-        }
-    };
+    info!(
+        "Building FalkorDB connection pool → {}:{} tls={} user={} graph='{}'",
+        host, port, use_tls, username, graph_name
+    );
+
+    let manager = RedisConnectionManager::new(conn_info)
+        .context("Failed to configure redis connection")?;
+
+    // Build the pool with an 8-second connection timeout per attempt.
+    // Connections are lazy — bb8 does NOT connect during build().
+    let pool = Pool::builder()
+        .max_size(16)
+        .connection_timeout(std::time::Duration::from_secs(8))
+        .build(manager)
+        .await
+        .context("Failed to build FalkorDB connection pool")?;
 
     let pool = Arc::new(pool);
 
-    // NOTE: We no longer create indexes on a shared graph at startup.
+    // Smoke-test: one connection attempt with a hard 10 s total cap.
+    // Logs a warning but does NOT abort startup if the test fails.
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        pool.get(),
+    ).await {
+        Ok(Ok(mut conn)) => {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                redis::cmd("PING").query_async::<_, String>(&mut *conn),
+            ).await {
+                Ok(Ok(pong)) => {
+                    info!("FalkorDB PING → {} (connection verified)", pong);
+                }
+                Ok(Err(e)) => {
+                    warn!("FalkorDB PING failed (auth or protocol error): {}. \
+                           Pool created — operations will fail until resolved.", e);
+                }
+                Err(_) => {
+                    warn!("FalkorDB PING timed out after 5s. \
+                           Pool created — operations will retry on each request.");
+                }
+            }
+        }
+        Ok(Err(e)) => {
+            warn!(
+                "FalkorDB initial connection failed after 8s: {:#}. \
+                 Pool created — will retry on each request.",
+                e
+            );
+        }
+        Err(_) => {
+            warn!("FalkorDB pool.get() timed out after 10s. \
+                   Pool created — will retry on each request.");
+        }
+    }
+
     // Per-user graphs (`graph-<user_id>`) are initialized lazily via
     // `ensure_user_graph()` when processing requests for each user.
     let storage = Arc::new(FalkordbStorage::new(pool, graph_name, false));
-    info!("FalkorDB connection pool ready (per-user graphs will be initialized on demand)");
+    info!("FalkorDB pool ready (lazy connections — per-user graphs on demand)");
     Ok(storage)
 }
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
