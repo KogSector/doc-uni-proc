@@ -83,6 +83,19 @@ impl AxumAuthLayer {
 
     /// Validate a Bearer token against auth-middleware
     pub async fn verify_token(&self, token: &str) -> Result<AuthenticatedUser, (StatusCode, String)> {
+        if let Ok(internal_key) = std::env::var("INTERNAL_API_KEY") {
+            if !internal_key.is_empty() && token == internal_key {
+                return Ok(AuthenticatedUser {
+                    id: "system".to_string(),
+                    email: "system@internal".to_string(),
+                    name: Some("Internal Service".to_string()),
+                    picture: None,
+                    roles: vec!["admin".to_string(), "internal".to_string()],
+                    workspace_id: None,
+                });
+            }
+        }
+
         // Try gRPC first if available
         if let Some(mut client) = self.grpc_client.clone() {
             let mut request = tonic::Request::new(ValidateTokenRequest {
@@ -145,6 +158,19 @@ impl AxumAuthLayer {
 
     /// Validate an API key against auth-middleware
     pub async fn validate_api_key(&self, key: &str) -> Result<AuthenticatedUser, (StatusCode, String)> {
+        if let Ok(internal_key) = std::env::var("INTERNAL_API_KEY") {
+            if !internal_key.is_empty() && key == internal_key {
+                return Ok(AuthenticatedUser {
+                    id: "system".to_string(),
+                    email: "system@internal".to_string(),
+                    name: Some("Internal Service".to_string()),
+                    picture: None,
+                    roles: vec!["admin".to_string(), "internal".to_string()],
+                    workspace_id: None,
+                });
+            }
+        }
+
         // Try gRPC first if available
         if let Some(mut client) = self.grpc_client.clone() {
             let mut request = tonic::Request::new(crate::infra::proto::confuse_auth_v1::ValidateApiKeyRequest {
