@@ -429,7 +429,22 @@ impl UnifiedProcessor {
         let write_result = if is_base64 {
             use base64::{Engine as _, engine::general_purpose::STANDARD};
             match STANDARD.decode(content) {
-                Ok(bytes) => std::fs::write(&file_path, bytes),
+                Ok(bytes) => {
+                    let final_bytes = if bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
+                        use std::io::Read;
+                        let mut decoder = flate2::read::GzDecoder::new(&bytes[..]);
+                        let mut decompressed = Vec::new();
+                        if decoder.read_to_end(&mut decompressed).is_ok() {
+                            tracing::info!("Decompressed gzip document payload: {} bytes -> {} bytes", bytes.len(), decompressed.len());
+                            decompressed
+                        } else {
+                            bytes
+                        }
+                    } else {
+                        bytes
+                    };
+                    std::fs::write(&file_path, final_bytes)
+                }
                 Err(e) => {
                     return (ProcessingResult {
                         success: false,
