@@ -226,8 +226,10 @@ impl UnifiedProcessor {
         config: Config,
         falkordb_storage: Arc<crate::infra::storage::FalkordbStorage>,
     ) -> Result<Self> {
-        // Initialize components
-        let document_parser = DocumentParser::new(true)?;
+        let python_processor_enabled = std::env::var("PYTHON_PROCESSOR_ENABLED")
+            .map(|v| v.to_lowercase() == "true" || v == "1")
+            .unwrap_or(false);
+        let document_parser = DocumentParser::new(python_processor_enabled)?;
         
         let postgres_storage = Arc::new(
             PostgresStorage::new(&config.database.postgres_url).await?

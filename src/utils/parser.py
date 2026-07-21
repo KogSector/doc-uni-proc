@@ -17,6 +17,9 @@ def parse_document(file_path: str) -> str:
     os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
+    if os.environ.get("ENABLE_DOCLING", "false").lower() not in ("true", "1"):
+        raise RuntimeError("Docling disabled by configuration (ENABLE_DOCLING!=true) to prevent OOM")
+
     # Strategy 1: Docling
     try:
         # pyrefly: ignore [missing-import]
