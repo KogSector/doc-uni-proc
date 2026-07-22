@@ -14,6 +14,25 @@ pub struct PostgresStorage {
 }
 
 impl PostgresStorage {
+    pub async fn is_toggle_enabled(&self, toggle_name: &str) -> bool {
+        // First check env var override if present
+        let env_var_name = format!("FEATURE_{}", toggle_name.to_uppercase());
+        if let Ok(val) = std::env::var(&env_var_name).or_else(|_| std::env::var(toggle_name.to_uppercase())) {
+            return val.to_lowercase() == "true" || val == "1";
+        }
+
+        // Query database table feature_toggles.toggles
+        let query = "SELECT enabled FROM feature_toggles.toggles WHERE name = $1";
+        match sqlx::query_scalar::<_, bool>(query)
+            .bind(toggle_name)
+            .fetch_one(&self.pool)
+            .await
+        {
+            Ok(enabled) => enabled,
+            Err(_) => false,
+        }
+    }
+
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(10)

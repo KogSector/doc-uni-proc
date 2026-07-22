@@ -52,9 +52,13 @@ impl DocumentParser {
 
 
     pub async fn process_document_file(&self, file_path: &str) -> Result<PipelineOutput> {
+        self.process_document_file_with_options(file_path, false).await
+    }
+
+    pub async fn process_document_file_with_options(&self, file_path: &str, force_lightweight: bool) -> Result<PipelineOutput> {
         let extension = self.detect_document_type(file_path);
         
-        if self._python_processor_enabled {
+        if self._python_processor_enabled && !force_lightweight {
             let path = file_path.to_string();
             let parsed_json = tokio::task::spawn_blocking(move || {
                 pyo3::Python::with_gil(|py| -> std::result::Result<String, String> {
