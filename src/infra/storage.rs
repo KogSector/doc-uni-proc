@@ -779,17 +779,21 @@ impl GraphSync {
 
         tracing::info!("GraphSync: Found {} cross-file relationships (including fallbacks)", symbol_rels.len());
 
+        let chunk_map: std::collections::HashMap<uuid::Uuid, &String> = chunks
+            .iter()
+            .map(|c| (c.id, &c.file_path))
+            .collect();
+
         let mut rels_added = 0;
         for rel in symbol_rels {
-            // we stored composite id in chunk.file_path for the dummy chunk
-            let source_composite = chunks.iter().find(|c| c.id == rel.source_chunk_id).map(|c| c.file_path.clone());
-            let target_composite = chunks.iter().find(|c| c.id == rel.target_chunk_id).map(|c| c.file_path.clone());
+            let source_composite = chunk_map.get(&rel.source_chunk_id);
+            let target_composite = chunk_map.get(&rel.target_chunk_id);
             
             if let (Some(s_comp), Some(t_comp)) = (source_composite, target_composite) {
                 let metadata_val = serde_json::to_value(&rel.metadata).unwrap_or(serde_json::json!({}));
                 if let Err(e) = user_graph.store_relationship(
-                    &s_comp,
-                    &t_comp,
+                    s_comp,
+                    t_comp,
                     rel.relationship_type.label(),
                     rel.confidence as f64,
                     &metadata_val
