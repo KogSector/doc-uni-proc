@@ -40,14 +40,14 @@ pub struct PipelineTable {
 
 pub struct DocumentParser {
     _python_processor_enabled: bool,
-    nim_ocr: Option<crate::infra::ocr::NvidiaNimOcr>,
+    nim_ocr: Option<crate::processors::preprocessors::ocr::NvidiaNimOcr>,
 }
 
 impl DocumentParser {
     pub fn new(python_processor_enabled: bool) -> Result<Self> {
-        let nim_ocr = if let Some(nim_config) = crate::infra::ocr::NimOcrConfig::from_env() {
+        let nim_ocr = if let Some(nim_config) = crate::processors::preprocessors::ocr::NimOcrConfig::from_env() {
             tracing::info!("Initializing NVIDIA NIM OCR service endpoint: {}", nim_config.endpoint);
-            match crate::infra::ocr::NvidiaNimOcr::new(nim_config) {
+            match crate::processors::preprocessors::ocr::NvidiaNimOcr::new(nim_config) {
                 Ok(ocr) => Some(ocr),
                 Err(e) => {
                     tracing::error!("Failed to initialize NVIDIA NIM OCR client: {}", e);
@@ -55,7 +55,7 @@ impl DocumentParser {
                 }
             }
         } else {
-            tracing::info!("NVIDIA NIM OCR is not configured (NVIDIA_NIM_ENDPOINT not set)");
+                tracing::info!("NVIDIA NIM OCR is not configured (NVIDIA_NIM_ENDPOINT not set)");
             None
         };
 

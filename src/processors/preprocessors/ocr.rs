@@ -49,7 +49,7 @@ impl NimOcrConfig {
             endpoint,
             api_key: std::env::var("NVIDIA_NIM_API_KEY").ok(),
             model: std::env::var("NVIDIA_NIM_MODEL")
-                .unwrap_or_else(|_| "meta/llama-3.2-11b-vision-instruct".to_string()),
+                .unwrap_or_else(|_| "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning".to_string()),
             batch_size: std::env::var("NIM_BATCH_SIZE")
                 .unwrap_or_else(|_| "4".to_string())
                 .parse()
