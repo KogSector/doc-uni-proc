@@ -635,6 +635,7 @@ impl UnifiedProcessor {
         ProcessorCapabilities {
             tree_sitter_enabled: true,
             docling_enabled: true,
+            nim_ocr_enabled: std::env::var("NVIDIA_NIM_ENDPOINT").is_ok(),
             kafka_connected: true, // Kafka enabled for embeddings pipeline
         }
     }
@@ -976,6 +977,7 @@ pub struct ProcessingStatus {
 pub struct ProcessorCapabilities {
     pub tree_sitter_enabled: bool,
     pub docling_enabled: bool,
+    pub nim_ocr_enabled: bool,
     pub kafka_connected: bool,
 }
 

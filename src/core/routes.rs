@@ -272,6 +272,7 @@ pub struct StatusResponse {
 pub struct ComponentStatus {
     pub tree_sitter: String,
     pub docling: String,
+    pub nim_ocr: String,
     pub embedding_model: String,
     pub postgres: String,
 }
@@ -303,6 +304,11 @@ pub async fn get_status(State(state): State<Arc<AppState>>) -> Json<StatusRespon
                 "enabled".to_string()
             } else {
                 "disabled".to_string()
+            },
+            nim_ocr: if capabilities.nim_ocr_enabled {
+                "active".to_string()
+            } else {
+                "inactive".to_string()
             },
             embedding_model: if capabilities.docling_enabled { "active".to_string() } else { "inactive".to_string() },
             postgres: "connected".to_string(),

@@ -40,16 +40,30 @@ pub struct PipelineTable {
 
 pub struct DocumentParser {
     _python_processor_enabled: bool,
+    nim_ocr: Option<crate::infra::ocr::NvidiaNimOcr>,
 }
 
 impl DocumentParser {
     pub fn new(python_processor_enabled: bool) -> Result<Self> {
+        let nim_ocr = if let Some(nim_config) = crate::infra::ocr::NimOcrConfig::from_env() {
+            tracing::info!("Initializing NVIDIA NIM OCR service endpoint: {}", nim_config.endpoint);
+            match crate::infra::ocr::NvidiaNimOcr::new(nim_config) {
+                Ok(ocr) => Some(ocr),
+                Err(e) => {
+                    tracing::error!("Failed to initialize NVIDIA NIM OCR client: {}", e);
+                    None
+                }
+            }
+        } else {
+            tracing::info!("NVIDIA NIM OCR is not configured (NVIDIA_NIM_ENDPOINT not set)");
+            None
+        };
+
         Ok(Self {
             _python_processor_enabled: python_processor_enabled,
+            nim_ocr,
         })
     }
-
-
 
     pub async fn process_document_file(&self, file_path: &str) -> Result<PipelineOutput> {
         self.process_document_file_with_options(file_path, false).await
@@ -58,6 +72,20 @@ impl DocumentParser {
     pub async fn process_document_file_with_options(&self, file_path: &str, force_lightweight: bool) -> Result<PipelineOutput> {
         let extension = self.detect_document_type(file_path);
         
+        // Priority 1: NVIDIA NIM Vision-Language Model OCR Offloader
+        if !force_lightweight {
+            if let Some(ref nim_ocr) = self.nim_ocr {
+                tracing::info!("Offloading document OCR/parsing to NVIDIA NIM for {}", file_path);
+                match nim_ocr.process_document(file_path).await {
+                    Ok(output) => return Ok(output),
+                    Err(e) => {
+                        tracing::error!("NVIDIA NIM OCR parsing failed for {}: {}, falling back to local pipeline", file_path, e);
+                    }
+                }
+            }
+        }
+
+        // Priority 2: Legacy Python pipeline (Docling)
         if self._python_processor_enabled && !force_lightweight {
             let path = file_path.to_string();
             let parsed_json = tokio::task::spawn_blocking(move || {
