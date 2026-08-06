@@ -78,14 +78,12 @@ impl FalkordbConfig {
             host: std::env::var("FALKORDB_HOST")
                 .map_err(|_| "FALKORDB_HOST must be set".to_string())?,
             port: std::env::var("FALKORDB_PORT")
-                .unwrap_or_else(|_| "64172".to_string())
+                .unwrap_or_else(|_| "50860".to_string())
                 .parse()
-                .unwrap_or(64172),
+                .unwrap_or(50860),
             username: std::env::var("FALKORDB_USERNAME")
                 .unwrap_or_else(|_| "falkordb".to_string()),
-            password: std::env::var("FALKORDB_PASSWORD")
-                .ok()
-                .or_else(|| Some("falkordb".to_string())),
+            password: std::env::var("FALKORDB_PASSWORD").ok(),
             use_tls: std::env::var("FALKORDB_USE_TLS")
                 .map(|v| v.to_lowercase() == "true" || v == "1")
                 .unwrap_or(false), // Default to false for plaintext endpoints

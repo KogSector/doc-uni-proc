@@ -1609,7 +1609,7 @@ pub async fn create_falkordb_storage(
     _embedding_dim: usize,
 ) -> Result<Arc<FalkordbStorage>> {
     // Construct standard redis:// or rediss:// connection URL
-    // We forcibly use `redis` (plaintext) because the FalkorDB cloud instance on port 64172
+    // We forcibly use `redis` (plaintext) because the FalkorDB cloud instance on port 50860
     // does not use TLS, but Render's dashboard might still have FALKORDB_USE_TLS=true,
     // which would cause a TLS handshake timeout.
     let scheme = "redis";
