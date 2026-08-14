@@ -232,7 +232,7 @@ impl UnifiedProcessor {
         let document_parser = DocumentParser::new(python_processor_enabled)?;
         
         let postgres_storage = Arc::new(
-            PostgresStorage::new(&config.database.postgres_url).await?
+            PostgresStorage::new(&config.database.DATABASE_URL).await?
         );
         
         let graph_sync = Arc::new(GraphSync::new(falkordb_storage.clone()));
