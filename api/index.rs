@@ -38,7 +38,60 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // ── Config ───────────────────────────────────────────────────────────────
-    let config = Config::from_env()?;
+    let config = Config::from_env().unwrap_or_else(|e| {
+        tracing::warn!("Config error, using defaults: {}", e);
+        // Provide minimal default config for Render deployment
+        Config {
+            server: unified_processor_lib::core::config::ServerConfig {
+                host: "0.0.0.0".to_string(),
+                port: 8090,
+                workers: 4,
+                grpc_host: "0.0.0.0".to_string(),
+                grpc_port: 50052,
+                auth_middleware_url: "http://auth-middleware:8080".to_string(),
+                auth_grpc_url: "".to_string(),
+            },
+            database: unified_processor_lib::core::config::DatabaseConfig {
+                DATABASE_URL: "postgresql://user:password@localhost:5432/dbname".to_string(),
+                max_connections: 10,
+            },
+            pipeline: unified_processor_lib::core::config::PipelineConfig {
+                max_file_size: 10485760,
+                chunk_size: 1000,
+                max_batch_size: 100,
+                timeout: std::time::Duration::from_secs(300),
+            },
+            grpc: Some(unified_processor_lib::core::config::GrpcConfig {
+                host: "0.0.0.0".to_string(),
+                port: 50052,
+            }),
+            falkordb: unified_processor_lib::core::config::FalkordbConfig {
+                host: "localhost".to_string(),
+                port: 50860,
+                username: "falkordb".to_string(),
+                password: Some("adminconfuse".to_string()),
+                use_tls: false,
+                embedding_dim: 1536,
+                timeout_secs: 30,
+            },
+            kafka: unified_processor_lib::core::config::KafkaConfig {
+                bootstrap_servers: "localhost:9092".to_string(),
+                group_id: "doc-uni-proc-group".to_string(),
+                client_id: "unified-processor".to_string(),
+                auto_offset_reset: "earliest".to_string(),
+                enable_auto_commit: true,
+            },
+            web: unified_processor_lib::core::config::WebConfig {
+                enabled: true,
+                max_pages: 50,
+                max_depth: 3,
+                crawl_delay_ms: 1000,
+                user_agent: "UnifiedProcessorBot/1.0".to_string(),
+                request_timeout_secs: 30,
+                max_concurrent_crawls: 5,
+            },
+        }
+    });
     let addr_str = format!("{}:{}", config.server.host, config.server.port);
 
     tracing::info!(
