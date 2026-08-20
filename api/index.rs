@@ -41,6 +41,8 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::from_env().unwrap_or_else(|e| {
         tracing::warn!("Config error, using defaults: {}", e);
         // Provide minimal default config for Render deployment
+        // IMPORTANT: These defaults will NOT work for actual processing
+        // You MUST set environment variables in Render dashboard
         Config {
             server: unified_processor_lib::core::config::ServerConfig {
                 host: "0.0.0.0".to_string(),
@@ -53,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
             },
             database: unified_processor_lib::core::config::DatabaseConfig {
                 DATABASE_URL: "postgresql://user:password@localhost:5432/dbname".to_string(),
-                max_connections: 10,
+                max_connections: 20,
             },
             pipeline: unified_processor_lib::core::config::PipelineConfig {
                 max_file_size: 10485760,
@@ -92,6 +94,17 @@ async fn main() -> anyhow::Result<()> {
             },
         }
     });
+
+    // Check if we're using default config (indicates missing env vars)
+    if config.database.DATABASE_URL.contains("localhost") || config.database.DATABASE_URL.contains("user:password") {
+        tracing::error!("CRITICAL: DATABASE_URL environment variable not set or using default. Please set DATABASE_URL in Render dashboard.");
+        tracing::error!("Service will not function properly without real database connection.");
+    }
+
+    if config.falkordb.host == "localhost" {
+        tracing::error!("CRITICAL: FALKORDB_HOST environment variable not set or using default. Please set FALKORDB_HOST in Render dashboard.");
+        tracing::error!("Service will not function properly without real FalkorDB connection.");
+    }
     let addr_str = format!("{}:{}", config.server.host, config.server.port);
 
     tracing::info!(
