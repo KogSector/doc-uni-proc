@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Check if we're using default config (indicates missing env vars)
     if config.database.DATABASE_URL.contains("localhost") || config.database.DATABASE_URL.contains("user:password") {
-        tracing::error!("CRITICAL: DATABASE_URL environment variable not set or using default. Please set DATABASE_URL in Render dashboard.");
+        tracing::error!("CRITICAL: POSTGRES_URL or DATABASE_URL environment variable not set or using default. Please set POSTGRES_URL in Render dashboard.");
         tracing::error!("Service will not function properly without real database connection.");
     }
 

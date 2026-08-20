@@ -40,8 +40,9 @@ pub struct DatabaseConfig {
 impl DatabaseConfig {
     pub fn from_env() -> Result<Self, String> {
         Ok(Self {
-            DATABASE_URL: std::env::var("DATABASE_URL")
-                .map_err(|_| "DATABASE_URL must be set".to_string())?,
+            DATABASE_URL: std::env::var("POSTGRES_URL")
+                .or_else(|_| std::env::var("DATABASE_URL"))
+                .map_err(|_| "POSTGRES_URL or DATABASE_URL must be set".to_string())?,
             max_connections: std::env::var("DB_MAX_CONNECTIONS")
                 .unwrap_or_else(|_| "10".to_string())
                 .parse()
