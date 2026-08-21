@@ -126,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
     let falkordb_storage = create_falkordb_storage(
         &config.falkordb.host,
         config.falkordb.port,
-        "default",
+        "placeholder",
         &config.falkordb.username,
         config.falkordb.password.as_deref().unwrap_or(""),
         config.falkordb.use_tls,

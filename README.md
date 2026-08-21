@@ -162,7 +162,7 @@ The unified processor integrates with:
 | `FALKORDB_PORT` | No | 6379 | FalkorDB port |
 | `FALKORDB_USERNAME` | No | neo4j | FalkorDB username |
 | `FALKORDB_PASSWORD` | Yes | - | FalkorDB password |
-| `FALKORDB_GRAPH_NAME` | No | knowledge-layer | FalkorDB graph name |
+| `FALKORDB_GRAPH_NAME` | No | placeholder | FalkorDB graph name (not used - per-user graphs follow graph-<id> pattern) |
 
 ## Documentation
 - [Architecture Details](docs/ARCHITECTURE.md)
