@@ -126,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
     let falkordb_storage = create_falkordb_storage(
         &config.falkordb.host,
         config.falkordb.port,
-        "placeholder",
+        "",
         &config.falkordb.username,
         config.falkordb.password.as_deref().unwrap_or(""),
         config.falkordb.use_tls,
@@ -152,17 +152,24 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Step 4.5: FalkorDB keep-alive (background) ─────────────────────────────
     // Keep FalkorDB active by pinging it every 4 minutes to prevent free tier spin-down
-    let keepalive_falkordb = falkordb_storage.clone();
+    let keepalive_pool = falkordb_storage.get_pool().clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(240)); // 4 minutes
         loop {
             interval.tick().await;
-            match keepalive_falkordb.execute_query("RETURN 1 as keepalive").await {
-                Ok(_) => {
-                    tracing::debug!("FalkorDB keep-alive ping successful");
+            match keepalive_pool.get().await {
+                Ok(mut conn) => {
+                    match redis::cmd("PING").query_async::<_, String>(&mut *conn).await {
+                        Ok(_) => {
+                            tracing::debug!("FalkorDB keep-alive ping successful");
+                        }
+                        Err(e) => {
+                            tracing::warn!("FalkorDB keep-alive ping failed: {}", e);
+                        }
+                    }
                 }
                 Err(e) => {
-                    tracing::warn!("FalkorDB keep-alive ping failed: {}", e);
+                    tracing::warn!("FalkorDB keep-alive connection failed: {}", e);
                 }
             }
         }

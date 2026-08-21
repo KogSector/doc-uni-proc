@@ -911,6 +911,10 @@ impl FalkordbStorage {
         }
     }
 
+    pub fn get_pool(&self) -> Arc<Pool<RedisConnectionManager>> {
+        self.pool.clone()
+    }
+
     /// Create a new FalkordbStorage instance targeting the per-user graph `graph-<user_id>`.
     /// This shares the underlying connection pool but routes all queries to the user's own graph.
     pub fn with_user_graph(&self, user_id: &str) -> Self {
