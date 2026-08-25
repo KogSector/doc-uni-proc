@@ -157,7 +157,7 @@ The unified processor integrates with:
 | `KAFKA_BOOTSTRAP_SERVERS` | Yes | - | Kafka bootstrap servers |
 | `KAFKA_ENABLED` | No | true | Enable Kafka integration |
 | `AUTH_SERVICE_URL` | No | http://auth-middleware:3010 | Auth service URL |
-| `EMBEDDINGS_SERVICE_URL` | No | https://embeddings-service-xmg6.onrender.com | Embeddings service gRPC endpoint |
+| `EMBEDDINGS_SERVICE_URL` | No | http://embeddings-service:3011 | Embeddings service gRPC endpoint (internal Docker network) |
 | `FALKORDB_HOST` | No | localhost | FalkorDB host |
 | `FALKORDB_PORT` | No | 6379 | FalkorDB port |
 | `FALKORDB_USERNAME` | No | neo4j | FalkorDB username |
