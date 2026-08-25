@@ -21,10 +21,17 @@ use unified_processor_lib::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Setup panic handler to catch and log panics
+    std::panic::set_hook(Box::new(|panic_info| {
+        tracing::error!("Panic occurred: {}", panic_info);
+    }));
+
     // ── Environment variables ────────────────────────────────────────────────
+    tracing::info!("Loading environment variables...");
     dotenvy::from_filename_override(".env.map").ok();
     dotenvy::from_filename_override(".env.secret").ok();
     dotenvy::from_filename_override(".env.local").ok();
+    tracing::info!("Environment variables loaded");
 
     // ── Tracing ─────────────────────────────────────────────────────────────
     tracing_subscriber::registry()
@@ -99,11 +106,13 @@ async fn main() -> anyhow::Result<()> {
     if config.database.DATABASE_URL.contains("localhost") || config.database.DATABASE_URL.contains("user:password") {
         tracing::error!("CRITICAL: POSTGRES_URL or DATABASE_URL environment variable not set or using default. Please set POSTGRES_URL in Render dashboard.");
         tracing::error!("Service will not function properly without real database connection.");
+        return Err(anyhow::anyhow!("DATABASE_URL environment variable is required for deployment"));
     }
 
     if config.falkordb.host == "localhost" {
         tracing::error!("CRITICAL: FALKORDB_HOST environment variable not set or using default. Please set FALKORDB_HOST in Render dashboard.");
         tracing::error!("Service will not function properly without real FalkorDB connection.");
+        return Err(anyhow::anyhow!("FALKORDB_HOST environment variable is required for deployment"));
     }
     let addr_str = format!("{}:{}", config.server.host, config.server.port);
 
