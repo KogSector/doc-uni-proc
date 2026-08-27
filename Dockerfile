@@ -10,6 +10,8 @@
 # ==============================================================================
 FROM debian:bookworm-slim AS rust-builder
 
+ARG RUST_VERSION=stable
+
 # Install all build-time dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -26,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust via rustup to guarantee latest stable compiler
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app

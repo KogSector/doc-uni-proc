@@ -1,9 +1,17 @@
 # Unified Processor .dockerignore
-
 target/
-.env
-.env.*
+.env*
+.git/
+.gitignore
 __pycache__/
 .venv/
-.git/
+*.log
 logs/
+tests/
+docs/
+README.md
+Dockerfile*
+.dockerignore
+rust-toolchain
+.DS_Store
+Thumbs.db
