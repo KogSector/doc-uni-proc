@@ -25,7 +25,7 @@ prost = "0.12"
 prost-types = "0.12"
 
 # Kafka for event streaming
-rdkafka = { version = "0.39.0", features = ["rt-tls", "ssl-vendored"] }
+rdkafka = { version = "0.39.0", features = ["dynamic-linking", "ssl-vendored"] }
 
 # FalkorDB via Redis protocol
 redis = { version = "0.25", features = ["tokio-comp", "tokio-rustls-comp"] }
