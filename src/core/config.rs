@@ -33,14 +33,14 @@ pub struct GrpcConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
-    pub DATABASE_URL: String,
+    pub database_url: String,
     pub max_connections: u32,
 }
 
 impl DatabaseConfig {
     pub fn from_env() -> Result<Self, String> {
         Ok(Self {
-            DATABASE_URL: std::env::var("POSTGRES_URL")
+            database_url: std::env::var("POSTGRES_URL")
                 .or_else(|_| std::env::var("DATABASE_URL"))
                 .map_err(|_| "POSTGRES_URL or DATABASE_URL must be set".to_string())?,
             max_connections: std::env::var("DB_MAX_CONNECTIONS")
