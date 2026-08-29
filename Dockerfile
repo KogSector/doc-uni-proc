@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     build-essential \
     librdkafka-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install Rust via rustup to guarantee latest stable compiler
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
@@ -89,9 +89,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libpoppler-dev \
     poppler-utils \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /app
 
@@ -101,7 +99,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml README.md* ./
 COPY src/utils/ ./src/utils/
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . && \
+    pip cache purge
 # ==============================================================================
 # Stage 3: Runtime image
 # ==============================================================================
@@ -120,7 +119,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     librdkafka1 \
     libgomp1 \
     libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Guarantee the linker can find the shared library
 ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/local/lib:$LD_LIBRARY_PATH"
