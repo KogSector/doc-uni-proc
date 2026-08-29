@@ -9,7 +9,6 @@ __pycache__/
 logs/
 tests/
 docs/
-README.md
 Dockerfile*
 .dockerignore
 rust-toolchain
