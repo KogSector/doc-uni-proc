@@ -9,7 +9,7 @@ description = "Python components for unified-processor"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "docling>=2.104.0",
+    "docling-slim[format-pdf]>=2.104.0",
     "pypdfium2>=5.10.1",
     "structlog>=26.1.0",
     "pillow>=12.2.0",

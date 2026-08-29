@@ -20,7 +20,7 @@ def parse_document(file_path: str) -> str:
     if os.environ.get("ENABLE_DOCLING", "false").lower() not in ("true", "1"):
         raise RuntimeError("Docling disabled by configuration (ENABLE_DOCLING!=true) to prevent OOM")
 
-    # Strategy 1: Docling
+    # Strategy 1: Docling Slim
     try:
         # pyrefly: ignore [missing-import]
         from docling.document_converter import DocumentConverter
@@ -79,7 +79,7 @@ def parse_document(file_path: str) -> str:
         word_count = len(full_md.split())
         page_count = len(doc.pages) if hasattr(doc, "pages") else getattr(doc, "num_pages", 0)
         ext = os.path.splitext(file_path)[1].lstrip(".").lower()
-        return json.dumps({"title": title, "sections": sections, "tables": tables, "metadata": {"page_count": page_count, "format": ext, "word_count": word_count, "parser": "advanced_pipeline"}}, ensure_ascii=False)
+        return json.dumps({"title": title, "sections": sections, "tables": tables, "metadata": {"page_count": page_count, "format": ext, "word_count": word_count, "parser": "docling-slim"}}, ensure_ascii=False)
     except Exception as e1:
         pass
 

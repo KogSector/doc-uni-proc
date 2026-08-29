@@ -12,7 +12,7 @@ FROM debian:bookworm-slim AS rust-builder
 
 ARG RUST_VERSION=stable
 
-# Install all build-time dependencies
+# Install minimal build-time dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     build-essential \
     librdkafka-dev \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache
 
 # Install Rust via rustup to guarantee latest stable compiler
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
@@ -58,6 +58,7 @@ RUN mkdir -p \
 # Cache dependencies
 RUN cargo build --release 2>/dev/null; \
     cargo clean -p unified-processor 2>/dev/null; \
+    rm -rf /app/target/release/deps /app/target/release/build && \
     true
 
 # ---------------------------------------------------------------------------
@@ -89,7 +90,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libpoppler-dev \
     poppler-utils \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache
 
 WORKDIR /app
 
@@ -99,8 +100,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml README.md* ./
 COPY src/utils/ ./src/utils/
-RUN pip install --no-cache-dir . && \
-    pip cache purge
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir . && \
+    pip cache purge && \
+    rm -rf /root/.cache/pip
 # ==============================================================================
 # Stage 3: Runtime image
 # ==============================================================================
@@ -119,7 +122,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     librdkafka1 \
     libgomp1 \
     libglib2.0-0 \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache
 
 # Guarantee the linker can find the shared library
 ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/local/lib:$LD_LIBRARY_PATH"
