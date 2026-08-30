@@ -1,8 +1,8 @@
 # ==============================================================================
-# Unified Processor Service - Dockerfile
+# Unified Processor Service - Dockerfile.vercel
 # ==============================================================================
 # Multi-stage build for Rust + Python hybrid service
-# Port: 8090
+# Port: 8080 (Vercel standard)
 # ==============================================================================
 
 # ==============================================================================
@@ -149,12 +149,9 @@ RUN chown -R appuser:appgroup /app
 # SECURITY: Switch to the non-root user
 USER appuser
 
-ENV PORT=8090
-EXPOSE 8090
-
-# Health check optimized for Render
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8090}/health || exit 1
+# ⚠️ CRITICAL: Vercel requires port 8080
+ENV PORT=8080
+EXPOSE 8080
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["unified-processor"]
