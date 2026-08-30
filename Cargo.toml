@@ -39,6 +39,9 @@ futures-util = "0.3.32"
 tower = "0.5.3"
 tower-http = { version = "0.7.0", features = ["cors", "trace"] }
 
+# Vercel serverless runtime
+vercel_runtime = "2.4.0"
+
 # Serialization
 serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = "1.0.150"

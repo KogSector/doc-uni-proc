@@ -205,7 +205,7 @@ pub struct WebProcessingResult {
 }
 
 pub struct UnifiedProcessor {
-    _config: Config,
+    config: Config,
     pub document_parser: DocumentParser,
     pub postgres_storage: Arc<PostgresStorage>,
     graph_sync: Arc<GraphSync>,
@@ -221,6 +221,10 @@ pub struct UnifiedProcessor {
 }
 
 impl UnifiedProcessor {
+
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
 
     pub async fn new(
         config: Config,

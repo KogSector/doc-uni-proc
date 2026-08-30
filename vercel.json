@@ -1,8 +1,17 @@
 {
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/"
+      "src": "api/index.rs",
+      "use": "@vercel/rust"
     }
-  ]
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.rs"
+    }
+  ],
+  "env": {
+    "RUSTFLAGS": "-C target-feature=+crt-static"
+  }
 }
