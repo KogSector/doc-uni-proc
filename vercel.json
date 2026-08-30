@@ -1,12 +1,4 @@
 {
-  "containerConfigurations": [
-    {
-      "name": "doc-uni-proc",
-      "dockerfile": "Dockerfile.vercel",
-      "target": "runtime",
-      "port": 8080
-    }
-  ],
   "rewrites": [
     {
       "source": "/(.*)",
