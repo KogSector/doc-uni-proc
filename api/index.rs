@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use vercel_runtime::{Handler, Request, Response, Error};
-use http::StatusCode;
+use vercel_runtime::{Request, Response, Error};
+use axum::http::StatusCode;
 use tower::util::ServiceExt;
 
 use unified_processor_lib::{
@@ -134,7 +134,7 @@ async fn initialize_processor() -> anyhow::Result<Arc<UnifiedProcessor>> {
     Ok(processor)
 }
 
-#[handler]
+#[vercel_runtime::handler]
 pub async fn handler(req: Request) -> Result<Response<String>, Error> {
     // Initialize processor (lazy initialization)
     let processor = initialize_processor().await.map_err(|e| {
