@@ -38,7 +38,6 @@ futures = "0.3.32"
 futures-util = "0.3.32"
 tower = "0.5.3"
 tower-http = { version = "0.7.0", features = ["cors", "trace"] }
-hyper = { version = "1.0", features = ["full"] }
 
 # Vercel serverless runtime
 vercel_runtime = "1.0"

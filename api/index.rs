@@ -134,11 +134,10 @@ async fn initialize_processor() -> anyhow::Result<Arc<UnifiedProcessor>> {
     Ok(processor)
 }
 
-#[vercel_runtime::handler]
 pub async fn handler(req: Request) -> Result<Response<String>, Error> {
     // Initialize processor (lazy initialization)
     let processor = initialize_processor().await.map_err(|e| {
-        Error::from(StatusCode::INTERNAL_SERVER_ERROR)
+        Error::from(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     })?;
 
     // Build router
@@ -161,13 +160,13 @@ pub async fn handler(req: Request) -> Result<Response<String>, Error> {
 
     // Process through Axum router
     let response = app.oneshot(axum_req).await.map_err(|e| {
-        Error::from(StatusCode::INTERNAL_SERVER_ERROR)
+        Error::from(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     })?;
 
     // Convert Axum response back to Vercel response
     let (parts, body) = response.into_parts();
-    let body_bytes = hyper::body::to_bytes(body).await.map_err(|e| {
-        Error::from(StatusCode::INTERNAL_SERVER_ERROR)
+    let body_bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+        Error::from(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     })?;
     let body_string = String::from_utf8(body_bytes.to_vec()).unwrap_or_default();
     let vercel_response = Response::from_parts(parts, body_string);
