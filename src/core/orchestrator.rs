@@ -252,7 +252,7 @@ impl UnifiedProcessor {
 
 
         Ok(Self {
-            _config: config,
+            config,
             document_parser,
             postgres_storage,
             graph_sync,
