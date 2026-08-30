@@ -1,5 +1,5 @@
 [package]
-name = "unified-processor"
+name = "doc-uni-proc"
 version = "0.1.0"
 edition = "2021"
 description = "Unified content processing service for ConFuse platform - repository AST analysis, document structure analysis, intelligent chunking"
@@ -11,7 +11,7 @@ name = "unified_processor_lib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "unified-processor"
+name = "doc-uni-proc"
 path = "api/index.rs"
 
 [dependencies]

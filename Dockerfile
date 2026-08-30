@@ -138,7 +138,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV VIRTUAL_ENV="/opt/venv"
 
 # Copy the compiled Rust binary and set ownership
-COPY --from=rust-builder --chown=appuser:appgroup /app/target/release/unified-processor /usr/local/bin/unified-processor
+COPY --from=rust-builder --chown=appuser:appgroup /app/target/release/doc-uni-proc /usr/local/bin/doc-uni-proc
 
 # Copy application source so pyo3 can import the Python document processor
 COPY --chown=appuser:appgroup src/ ./src/
@@ -154,4 +154,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["unified-processor"]
+CMD ["doc-uni-proc"]
