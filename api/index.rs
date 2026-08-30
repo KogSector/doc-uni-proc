@@ -6,7 +6,9 @@
 use std::sync::Arc;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use vercel_runtime::{handler, Request, Response, StatusCode, Error};
+use vercel_runtime::{Handler, Request, Response, Error};
+use http::StatusCode;
+use tower::util::ServiceExt;
 
 use unified_processor_lib::{
     core::routes::build_app_router,
@@ -133,7 +135,7 @@ async fn initialize_processor() -> anyhow::Result<Arc<UnifiedProcessor>> {
 }
 
 #[handler]
-pub async fn handler(req: Request) -> Result<Response, Error> {
+pub async fn handler(req: Request) -> Result<Response<String>, Error> {
     // Initialize processor (lazy initialization)
     let processor = initialize_processor().await.map_err(|e| {
         Error::from(StatusCode::INTERNAL_SERVER_ERROR)
@@ -164,7 +166,11 @@ pub async fn handler(req: Request) -> Result<Response, Error> {
 
     // Convert Axum response back to Vercel response
     let (parts, body) = response.into_parts();
-    let mut vercel_response = Response::from_parts(parts, body);
+    let body_bytes = hyper::body::to_bytes(body).await.map_err(|e| {
+        Error::from(StatusCode::INTERNAL_SERVER_ERROR)
+    })?;
+    let body_string = String::from_utf8(body_bytes.to_vec()).unwrap_or_default();
+    let vercel_response = Response::from_parts(parts, body_string);
 
     Ok(vercel_response)
 }
