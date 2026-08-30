@@ -2,6 +2,13 @@
 //!
 //! This is the main entry point for the unified processor service.
 
+use std::sync::Arc;
+use tracing_subscriber::prelude::*;
+use unified_processor_lib::core::config::Config;
+use unified_processor_lib::core::orchestrator::UnifiedProcessor;
+use unified_processor_lib::graph::storage::create_falkordb_storage;
+use unified_processor_lib::infra::router::build_app_router;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Setup panic handler to catch and log panics
