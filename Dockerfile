@@ -57,7 +57,7 @@ RUN mkdir -p \
 
 # Cache dependencies
 RUN cargo build --release 2>/dev/null; \
-    cargo clean -p unified-processor 2>/dev/null; \
+    cargo clean -p doc-uni-proc 2>/dev/null; \
     rm -rf /app/target/release/deps /app/target/release/build && \
     true
 
