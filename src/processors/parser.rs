@@ -72,20 +72,26 @@ impl DocumentParser {
     pub async fn process_document_file_with_options(&self, file_path: &str, force_lightweight: bool) -> Result<PipelineOutput> {
         let extension = self.detect_document_type(file_path);
         
-        // Priority 1: NVIDIA NIM Vision-Language Model OCR Offloader
+        // Priority 1: NVIDIA NIM Vision-Language Model OCR Offloader (Fast, Low Power)
         if !force_lightweight {
             if let Some(ref nim_ocr) = self.nim_ocr {
                 tracing::info!("Offloading document OCR/parsing to NVIDIA NIM for {}", file_path);
                 match nim_ocr.process_document(file_path).await {
-                    Ok(output) => return Ok(output),
+                    Ok(output) => {
+                        if self.is_output_sufficient(&output) {
+                            tracing::info!("NVIDIA NIM OCR output verified sufficient for {}", file_path);
+                            return Ok(output);
+                        }
+                        tracing::info!("NIM OCR output insufficient for {}, falling back to Python/Docling", file_path);
+                    }
                     Err(e) => {
-                        tracing::error!("NVIDIA NIM OCR parsing failed for {}: {}, falling back to local pipeline", file_path, e);
+                        tracing::warn!("NVIDIA NIM OCR parsing failed for {}: {}, falling back to Python/Docling", file_path, e);
                     }
                 }
             }
         }
 
-        // Priority 2: Legacy Python pipeline (Docling)
+        // Priority 2: Python / Docling ML pipeline (Advanced layout & table extraction)
         if self._python_processor_enabled && !force_lightweight {
             let path = file_path.to_string();
             let parsed_json = tokio::task::spawn_blocking(move || {
@@ -108,15 +114,20 @@ impl DocumentParser {
             match parsed_json {
                 Ok(json_str) => {
                     match serde_json::from_str::<PipelineOutput>(&json_str) {
-                        Ok(parsed) => return Ok(parsed),
-                        Err(e) => tracing::error!("Failed to deserialize python parser output: {}", e),
+                        Ok(parsed) => {
+                            if !parsed.sections.is_empty() || !parsed.tables.is_empty() {
+                                return Ok(parsed);
+                            }
+                            tracing::warn!("Python parser returned empty structure for {}, falling back to Rust reader", file_path);
+                        }
+                        Err(e) => tracing::error!("Failed to deserialize python parser output for {}: {}", file_path, e),
                     }
                 }
-                Err(e) => tracing::error!("Python parser failed: {}", e),
+                Err(e) => tracing::error!("Python parser execution failed for {}: {}", file_path, e),
             }
         }
         
-        // Fallback if python is disabled or fails
+        // Priority 3: Native Rust extraction (Fast & zero-overhead fallback)
         let content = if extension == "pdf" {
             let path = file_path.to_string();
             tokio::task::spawn_blocking(move || {
@@ -146,6 +157,31 @@ impl DocumentParser {
         };
 
         Ok(parsed)
+    }
+
+    /// Assess if the OCR/parsed output quality is sufficient
+    pub fn is_output_sufficient(&self, output: &PipelineOutput) -> bool {
+        let total_content_len: usize = output.sections.iter().map(|s| s.content.len()).sum();
+        
+        // If content is completely missing or negligible, quality is insufficient
+        if total_content_len < 50 && output.tables.is_empty() {
+            return false;
+        }
+
+        // If document appears to have tables but no tables were extracted, check heuristic
+        let combined_text: String = output.sections.iter().map(|s| s.content.as_str()).collect::<Vec<_>>().join(" ");
+        if output.tables.is_empty() && self.document_likely_has_tables(&combined_text) {
+            return false;
+        }
+
+        true
+    }
+
+    /// Heuristic to detect if text likely contains markdown or formatted tables
+    pub fn document_likely_has_tables(&self, content: &str) -> bool {
+        let has_pipes = content.lines().filter(|l| l.split('|').count() > 3).count() > 3;
+        let has_table_keyword = content.contains("TABLE ") || content.contains("Table ") || content.contains("table:");
+        has_pipes || (has_table_keyword && content.lines().filter(|l| l.split_whitespace().count() >= 4).count() > 5)
     }
 
     /// Detect document type by extension

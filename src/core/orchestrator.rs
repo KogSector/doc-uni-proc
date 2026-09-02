@@ -423,6 +423,19 @@ impl UnifiedProcessor {
     }
 
     async fn process_document(&self, content: &str, is_base64: bool, filename: &str, source_id: &str) -> (ProcessingResult, Vec<crate::core::chunking::Chunk>) {
+        // Enforce document size limits for serverless / Vercel container execution
+        let max_size_mb: usize = std::env::var("MAX_DOCUMENT_SIZE_MB")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(50);
+        if content.len() > max_size_mb * 1024 * 1024 {
+            return (ProcessingResult {
+                success: false,
+                processing_time_ms: 0,
+                error: Some(format!("Document exceeds maximum payload size limit of {} MB", max_size_mb)),
+            }, vec![]);
+        }
+
         // Write content to a temp file since process_document_file requires a file path
         let temp_dir = std::env::temp_dir();
         // Use a UUID to avoid path traversal or missing directory errors if filename contains slashes
@@ -496,8 +509,8 @@ impl UnifiedProcessor {
             },
         };
 
-        // Clean up temp file
-        let _ = std::fs::remove_file(file_path);
+        // Clean up temp file immediately after processing
+        let _ = std::fs::remove_file(&file_path);
 
         result
     }

@@ -1,0 +1,11 @@
+.git
+.gitignore
+.cargo
+.venv
+target/
+logs/
+*.log
+*.tmp
+tests/
+__pycache__/
+*.pyc

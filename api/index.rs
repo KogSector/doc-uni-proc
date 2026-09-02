@@ -140,39 +140,60 @@ async fn main() -> anyhow::Result<()> {
     ).await?);
 
     // ── Step 4: Kafka consumer (background) ──────────────────────────────────
-    let consumer_processor = processor.clone();
-    tokio::spawn(async move {
-        tracing::info!("Initializing Kafka event consumer...");
-        let consumer = unified_processor_lib::graph::consumer::UnifiedEventConsumer::new(consumer_processor);
-        if let Err(e) = consumer.start().await {
-            tracing::error!("Kafka consumer failed to start: {}", e);
-        }
-    });
+    // Disabled by default on Vercel / serverless runtime to prevent long-running tasks.
+    // Use doc-uni-proc-worker for continuous Kafka stream consumption.
+    let is_serverless = std::env::var("VERCEL").is_ok() || std::env::var("AWS_LAMBDA_FUNCTION_NAME").is_ok() || std::env::var("NOW_REGION").is_ok();
+    let enable_kafka = std::env::var("ENABLE_KAFKA_CONSUMER")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(!is_serverless && false);
+
+    if enable_kafka {
+        let consumer_processor = processor.clone();
+        tokio::spawn(async move {
+            tracing::info!("Initializing Kafka event consumer...");
+            let consumer = unified_processor_lib::graph::consumer::UnifiedEventConsumer::new(consumer_processor);
+            if let Err(e) = consumer.start().await {
+                tracing::warn!("Kafka consumer stopped or failed to start: {}", e);
+            }
+        });
+    } else {
+        tracing::info!("Kafka event consumer disabled (running in serverless HTTP mode; use doc-uni-proc-worker for background events)");
+    }
 
     // ── Step 4.5: FalkorDB keep-alive (background) ─────────────────────────────
-    // Keep FalkorDB active by pinging it every 4 minutes to prevent free tier spin-down
-    let keepalive_pool = falkordb_storage.get_pool().clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(240)); // 4 minutes
-        loop {
-            interval.tick().await;
-            match keepalive_pool.get().await {
-                Ok(mut conn) => {
-                    match redis::cmd("PING").query_async::<_, String>(&mut *conn).await {
-                        Ok(_) => {
-                            tracing::debug!("FalkorDB keep-alive ping successful");
-                        }
-                        Err(e) => {
-                            tracing::warn!("FalkorDB keep-alive ping failed: {}", e);
+    let enable_keepalive = std::env::var("FALKORDB_KEEPALIVE_ENABLED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(!is_serverless && false);
+
+    if enable_keepalive {
+        let keepalive_interval_secs = std::env::var("FALKORDB_KEEPALIVE_INTERVAL_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(240);
+
+        let keepalive_pool = falkordb_storage.get_pool().clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(keepalive_interval_secs));
+            loop {
+                interval.tick().await;
+                match keepalive_pool.get().await {
+                    Ok(mut conn) => {
+                        match redis::cmd("PING").query_async::<_, String>(&mut *conn).await {
+                            Ok(_) => {
+                                tracing::debug!("FalkorDB keep-alive ping successful");
+                            }
+                            Err(e) => {
+                                tracing::warn!("FalkorDB keep-alive ping failed: {}", e);
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    tracing::warn!("FalkorDB keep-alive connection failed: {}", e);
+                    Err(e) => {
+                        tracing::warn!("FalkorDB keep-alive connection failed: {}", e);
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     // ── Step 5: Router + middleware ──────────────────────────────────────────
     let auth_layer = unified_processor_lib::infra::middleware::AxumAuthLayer::new(

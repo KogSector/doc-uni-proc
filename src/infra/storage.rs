@@ -34,8 +34,15 @@ impl PostgresStorage {
     }
 
     pub async fn new(database_url: &str) -> Result<Self> {
+        let max_conns = std::env::var("DB_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
+
         let pool = PgPoolOptions::new()
-            .max_connections(10)
+            .max_connections(max_conns)
+            .acquire_timeout(std::time::Duration::from_secs(15))
+            .idle_timeout(std::time::Duration::from_secs(300))
             .connect(database_url)
             .await
             .map_err(|e| ProcessorError::DatabaseError(e.to_string()))?;
@@ -934,34 +941,50 @@ impl FalkordbStorage {
 
 
     pub async fn execute_query(&self, cypher: &str) -> Result<redis::Value> {
-        let mut conn = match self.pool.get().await {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("FalkorDB pool get error: {:#}", e);
-                return Err(anyhow::anyhow!("Failed to get redis connection: {}", e).into());
-            }
-        };
-        let res = cmd("GRAPH.QUERY")
-            .arg(&self.graph_name)
-            .arg(cypher)
-            .arg("--compact")
-            .query_async::<_, redis::Value>(&mut *conn)
-            .await;
-            
-        match res {
-            Ok(v) => Ok(v),
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("already indexed") || msg.contains("already exists") {
-                    Ok(redis::Value::Nil)
-                } else {
+        let mut attempts = 0;
+        let max_attempts = 2;
+
+        loop {
+            attempts += 1;
+            let mut conn = match self.pool.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("FalkorDB pool get error (attempt {}/{}): {:#}", attempts, max_attempts, e);
+                    if attempts < max_attempts {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!("Failed to get redis connection: {}", e).into());
+                }
+            };
+
+            let res = cmd("GRAPH.QUERY")
+                .arg(&self.graph_name)
+                .arg(cypher)
+                .arg("--compact")
+                .query_async::<_, redis::Value>(&mut *conn)
+                .await;
+
+            match res {
+                Ok(v) => return Ok(v),
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("already indexed") || msg.contains("already exists") {
+                        return Ok(redis::Value::Nil);
+                    }
+                    // If connection reset / broken pipe, retry once with a fresh connection
+                    if attempts < max_attempts && (msg.contains("Broken pipe") || msg.contains("Connection reset") || msg.contains("Closed connection") || msg.contains("IO error")) {
+                        tracing::warn!("FalkorDB connection dropped during query, retrying with fresh connection: {}", msg);
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        continue;
+                    }
                     let truncated_cypher = if cypher.len() > 300 {
                         format!("{}... [TRUNCATED]", &cypher[..300])
                     } else {
                         cypher.to_string()
                     };
                     tracing::error!("FalkorDB query error (cypher: {}): {:?}", truncated_cypher, e);
-                    Err(e).context("Failed to execute GRAPH.QUERY")?
+                    return Err(anyhow::anyhow!(e).context("Failed to execute GRAPH.QUERY").into());
                 }
             }
         }
