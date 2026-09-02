@@ -230,10 +230,7 @@ impl UnifiedProcessor {
         config: Config,
         falkordb_storage: Arc<crate::infra::storage::FalkordbStorage>,
     ) -> Result<Self> {
-        let python_processor_enabled = std::env::var("PYTHON_PROCESSOR_ENABLED")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
-        let document_parser = DocumentParser::new(python_processor_enabled)?;
+        let document_parser = DocumentParser::new()?;
         
         let postgres_storage = Arc::new(
             PostgresStorage::new(&config.database.database_url).await?
@@ -651,7 +648,7 @@ impl UnifiedProcessor {
     pub fn get_capabilities(&self) -> ProcessorCapabilities {
         ProcessorCapabilities {
             tree_sitter_enabled: true,
-            docling_enabled: true,
+            docling_enabled: false,
             nim_ocr_enabled: std::env::var("NVIDIA_NIM_ENDPOINT").is_ok(),
             kafka_connected: true, // Kafka enabled for embeddings pipeline
         }

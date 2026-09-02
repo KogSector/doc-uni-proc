@@ -39,12 +39,11 @@ pub struct PipelineTable {
 }
 
 pub struct DocumentParser {
-    _python_processor_enabled: bool,
     nim_ocr: Option<crate::processors::preprocessors::ocr::NvidiaNimOcr>,
 }
 
 impl DocumentParser {
-    pub fn new(python_processor_enabled: bool) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let nim_ocr = if let Some(nim_config) = crate::processors::preprocessors::ocr::NimOcrConfig::from_env() {
             tracing::info!("Initializing NVIDIA NIM OCR service endpoint: {}", nim_config.endpoint);
             match crate::processors::preprocessors::ocr::NvidiaNimOcr::new(nim_config) {
@@ -55,14 +54,11 @@ impl DocumentParser {
                 }
             }
         } else {
-                tracing::info!("NVIDIA NIM OCR is not configured (NVIDIA_NIM_ENDPOINT not set)");
+            tracing::info!("NVIDIA NIM OCR is not configured (NVIDIA_NIM_ENDPOINT not set)");
             None
         };
 
-        Ok(Self {
-            _python_processor_enabled: python_processor_enabled,
-            nim_ocr,
-        })
+        Ok(Self { nim_ocr })
     }
 
     pub async fn process_document_file(&self, file_path: &str) -> Result<PipelineOutput> {
@@ -82,52 +78,16 @@ impl DocumentParser {
                             tracing::info!("NVIDIA NIM OCR output verified sufficient for {}", file_path);
                             return Ok(output);
                         }
-                        tracing::info!("NIM OCR output insufficient for {}, falling back to Python/Docling", file_path);
+                        tracing::info!("NIM OCR output insufficient for {}, falling back to native Rust extractor", file_path);
                     }
                     Err(e) => {
-                        tracing::warn!("NVIDIA NIM OCR parsing failed for {}: {}, falling back to Python/Docling", file_path, e);
+                        tracing::warn!("NVIDIA NIM OCR parsing failed for {}: {}, falling back to native Rust extractor", file_path, e);
                     }
                 }
-            }
-        }
-
-        // Priority 2: Python / Docling ML pipeline (Advanced layout & table extraction)
-        if self._python_processor_enabled && !force_lightweight {
-            let path = file_path.to_string();
-            let parsed_json = tokio::task::spawn_blocking(move || {
-                pyo3::Python::with_gil(|py| -> std::result::Result<String, String> {
-                    let parser_code = include_str!("../utils/parser.py");
-                    let parser_module = pyo3::types::PyModule::from_code(
-                        py,
-                        parser_code,
-                        "parser.py",
-                        "parser"
-                    ).map_err(|e| e.to_string())?;
-                    let result: String = parser_module
-                        .getattr("parse_document").map_err(|e| e.to_string())?
-                        .call1((&path,)).map_err(|e| e.to_string())?
-                        .extract().map_err(|e| e.to_string())?;
-                    Ok(result)
-                })
-            }).await.unwrap_or_else(|e| Err(e.to_string()));
-            
-            match parsed_json {
-                Ok(json_str) => {
-                    match serde_json::from_str::<PipelineOutput>(&json_str) {
-                        Ok(parsed) => {
-                            if !parsed.sections.is_empty() || !parsed.tables.is_empty() {
-                                return Ok(parsed);
-                            }
-                            tracing::warn!("Python parser returned empty structure for {}, falling back to Rust reader", file_path);
-                        }
-                        Err(e) => tracing::error!("Failed to deserialize python parser output for {}: {}", file_path, e),
-                    }
-                }
-                Err(e) => tracing::error!("Python parser execution failed for {}: {}", file_path, e),
             }
         }
         
-        // Priority 3: Native Rust extraction (Fast & zero-overhead fallback)
+        // Priority 2: Native Rust extraction (Fast & zero-overhead fallback)
         let content = if extension == "pdf" {
             let path = file_path.to_string();
             tokio::task::spawn_blocking(move || {

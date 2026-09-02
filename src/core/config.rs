@@ -260,3 +260,59 @@ impl Config {
         })
     }
 }
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig {
+                host: "0.0.0.0".to_string(),
+                port: std::env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse().unwrap_or(8080),
+                workers: 4,
+                grpc_host: "0.0.0.0".to_string(),
+                grpc_port: 50052,
+                auth_middleware_url: std::env::var("AUTH_MIDDLEWARE_URL").unwrap_or_else(|_| "http://auth-middleware:8080".to_string()),
+                auth_grpc_url: "".to_string(),
+            },
+            database: DatabaseConfig {
+                database_url: std::env::var("POSTGRES_URL").or_else(|_| std::env::var("DATABASE_URL")).unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/confuse".to_string()),
+                max_connections: 5,
+            },
+            pipeline: PipelineConfig {
+                max_file_size: 10485760,
+                chunk_size: 1000,
+                max_batch_size: 100,
+                timeout: Duration::from_secs(300),
+            },
+            grpc: Some(GrpcConfig {
+                host: "0.0.0.0".to_string(),
+                port: 50052,
+            }),
+            falkordb: FalkordbConfig {
+                host: std::env::var("FALKORDB_HOST").unwrap_or_else(|_| "localhost".to_string()),
+                port: std::env::var("FALKORDB_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(50860),
+                username: std::env::var("FALKORDB_USERNAME").unwrap_or_else(|_| "falkordb".to_string()),
+                password: std::env::var("FALKORDB_PASSWORD").ok().or_else(|| Some("adminconfuse".to_string())),
+                use_tls: std::env::var("FALKORDB_USE_TLS").map(|v| v == "true" || v == "1").unwrap_or(false),
+                embedding_dim: 1536,
+                timeout_secs: 30,
+            },
+            kafka: KafkaConfig {
+                bootstrap_servers: std::env::var("KAFKA_BOOTSTRAP_SERVERS").unwrap_or_else(|_| "localhost:9092".to_string()),
+                group_id: "doc-uni-proc-group".to_string(),
+                client_id: "unified-processor".to_string(),
+                auto_offset_reset: "earliest".to_string(),
+                enable_auto_commit: true,
+            },
+            web: WebConfig {
+                enabled: true,
+                max_pages: 50,
+                max_depth: 3,
+                crawl_delay_ms: 1000,
+                user_agent: "UnifiedProcessorBot/1.0".to_string(),
+                request_timeout_secs: 30,
+                max_concurrent_crawls: 5,
+            },
+        }
+    }
+}
+

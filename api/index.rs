@@ -1,212 +1,27 @@
-//! doc-uni-proc - Main Entry Point
-//!
-//! This is the main entry point for the unified processor service.
-
-use std::sync::Arc;
-use tracing_subscriber::prelude::*;
-use unified_processor_lib::core::config::Config;
-use unified_processor_lib::core::orchestrator::UnifiedProcessor;
-use unified_processor_lib::core::routes::build_app_router;
-use unified_processor_lib::infra::storage::create_falkordb_storage;
+use serde_json::json;
+use vercel_runtime::{run, Body, Error, Request, Response, StatusCode};
+use unified_processor_lib::get_processor;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Setup panic handler to catch and log panics
-    std::panic::set_hook(Box::new(|panic_info| {
-        tracing::error!("Panic occurred: {}", panic_info);
-    }));
+async fn main() -> Result<(), Error> {
+    run(handler).await
+}
 
-    // ── Environment variables ────────────────────────────────────────────────
-    tracing::info!("Loading environment variables...");
-    dotenvy::from_filename_override(".env.map").ok();
-    dotenvy::from_filename_override(".env.secret").ok();
-    dotenvy::from_filename_override(".env.local").ok();
-    tracing::info!("Environment variables loaded");
+pub async fn handler(_req: Request) -> Result<Response<Body>, Error> {
+    let _processor = get_processor().await.map_err(|e| {
+        Error::from(format!("Failed to initialize processor: {}", e))
+    })?;
 
-    // ── Tracing ─────────────────────────────────────────────────────────────
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "info,unified_processor_lib=debug,unified_processor=debug,tower_http=debug".into()))
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stdout)
-                .json()
-        )
-        .init();
-
-    // ── Config ───────────────────────────────────────────────────────────────
-    let config = Config::from_env().unwrap_or_else(|e| {
-        tracing::warn!("Config error, using defaults: {}", e);
-        // Provide minimal default config for Render deployment
-        // IMPORTANT: These defaults will NOT work for actual processing
-        // You MUST set environment variables in Render dashboard
-        Config {
-            server: unified_processor_lib::core::config::ServerConfig {
-                host: "0.0.0.0".to_string(),
-                port: std::env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse().unwrap_or(8080),
-                workers: 4,
-                grpc_host: "0.0.0.0".to_string(),
-                grpc_port: 50052,
-                auth_middleware_url: "http://auth-middleware:8080".to_string(),
-                auth_grpc_url: "".to_string(),
-            },
-            database: unified_processor_lib::core::config::DatabaseConfig {
-                database_url: "postgresql://user:password@localhost:5432/dbname".to_string(),
-                max_connections: 20,
-            },
-            pipeline: unified_processor_lib::core::config::PipelineConfig {
-                max_file_size: 10485760,
-                chunk_size: 1000,
-                max_batch_size: 100,
-                timeout: std::time::Duration::from_secs(300),
-            },
-            grpc: Some(unified_processor_lib::core::config::GrpcConfig {
-                host: "0.0.0.0".to_string(),
-                port: 50052,
-            }),
-            falkordb: unified_processor_lib::core::config::FalkordbConfig {
-                host: "localhost".to_string(),
-                port: 50860,
-                username: "falkordb".to_string(),
-                password: Some("adminconfuse".to_string()),
-                use_tls: false,
-                embedding_dim: 1536,
-                timeout_secs: 30,
-            },
-            kafka: unified_processor_lib::core::config::KafkaConfig {
-                bootstrap_servers: "localhost:9092".to_string(),
-                group_id: "doc-uni-proc-group".to_string(),
-                client_id: "unified-processor".to_string(),
-                auto_offset_reset: "earliest".to_string(),
-                enable_auto_commit: true,
-            },
-            web: unified_processor_lib::core::config::WebConfig {
-                enabled: true,
-                max_pages: 50,
-                max_depth: 3,
-                crawl_delay_ms: 1000,
-                user_agent: "UnifiedProcessorBot/1.0".to_string(),
-                request_timeout_secs: 30,
-                max_concurrent_crawls: 5,
-            },
-        }
+    let response = json!({
+        "status": "healthy",
+        "service": "doc-uni-proc",
+        "version": env!("CARGO_PKG_VERSION"),
     });
 
-    // Check if we're using default config (indicates missing env vars)
-    if config.database.database_url.contains("localhost") || config.database.database_url.contains("user:password") {
-        tracing::error!("CRITICAL: POSTGRES_URL or DATABASE_URL environment variable not set or using default. Please set POSTGRES_URL in Render dashboard.");
-        tracing::error!("Service will not function properly without real database connection.");
-        return Err(anyhow::anyhow!("DATABASE_URL environment variable is required for deployment"));
-    }
+    let resp_bytes = serde_json::to_vec(&response).map_err(|e| Error::from(e.to_string()))?;
 
-    if config.falkordb.host == "localhost" {
-        tracing::error!("CRITICAL: FALKORDB_HOST environment variable not set or using default. Please set FALKORDB_HOST in Render dashboard.");
-        tracing::error!("Service will not function properly without real FalkorDB connection.");
-        return Err(anyhow::anyhow!("FALKORDB_HOST environment variable is required for deployment"));
-    }
-    let addr_str = format!("{}:{}", config.server.host, config.server.port);
-
-    tracing::info!(
-        addr = %addr_str,
-        falkordb_host = %config.falkordb.host,
-        falkordb_port = config.falkordb.port,
-        falkordb_tls  = config.falkordb.use_tls,
-        falkordb_user = %config.falkordb.username,
-        "Starting doc-uni-proc"
-    );
-
-    // ── Step 1: Bind TCP port FIRST ──────────────────────────────────────────
-    // Render kills a deploy if no port is detected within ~15 minutes.
-    // Binding here — before FalkorDB — ensures Render sees us immediately.
-    let listener = tokio::net::TcpListener::bind(&addr_str).await?;
-    tracing::info!(bound_addr = %addr_str, "TCP listener bound — service accepting connections");
-
-    // ── Step 2: FalkorDB connection pool ─────────────────────────────────────
-    let falkordb_storage = create_falkordb_storage(
-        &config.falkordb.host,
-        config.falkordb.port,
-        "",
-        &config.falkordb.username,
-        config.falkordb.password.as_deref().unwrap_or(""),
-        config.falkordb.use_tls,
-        config.falkordb.embedding_dim,
-    ).await?;
-    tracing::info!("FalkorDB pool ready");
-
-    // ── Step 3: Processor ────────────────────────────────────────────────────
-    let processor = Arc::new(UnifiedProcessor::new(
-        config.clone(),
-        falkordb_storage.clone(),
-    ).await?);
-
-    // ── Step 4: Kafka consumer (background) ──────────────────────────────────
-    // Disabled by default on Vercel / serverless runtime to prevent long-running tasks.
-    // Use doc-uni-proc-worker for continuous Kafka stream consumption.
-    let is_serverless = std::env::var("VERCEL").is_ok() || std::env::var("AWS_LAMBDA_FUNCTION_NAME").is_ok() || std::env::var("NOW_REGION").is_ok();
-    let enable_kafka = std::env::var("ENABLE_KAFKA_CONSUMER")
-        .map(|v| v.to_lowercase() == "true" || v == "1")
-        .unwrap_or(!is_serverless && false);
-
-    if enable_kafka {
-        let consumer_processor = processor.clone();
-        tokio::spawn(async move {
-            tracing::info!("Initializing Kafka event consumer...");
-            let consumer = unified_processor_lib::graph::consumer::UnifiedEventConsumer::new(consumer_processor);
-            if let Err(e) = consumer.start().await {
-                tracing::warn!("Kafka consumer stopped or failed to start: {}", e);
-            }
-        });
-    } else {
-        tracing::info!("Kafka event consumer disabled (running in serverless HTTP mode; use doc-uni-proc-worker for background events)");
-    }
-
-    // ── Step 4.5: FalkorDB keep-alive (background) ─────────────────────────────
-    let enable_keepalive = std::env::var("FALKORDB_KEEPALIVE_ENABLED")
-        .map(|v| v.to_lowercase() == "true" || v == "1")
-        .unwrap_or(!is_serverless && false);
-
-    if enable_keepalive {
-        let keepalive_interval_secs = std::env::var("FALKORDB_KEEPALIVE_INTERVAL_SECS")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(240);
-
-        let keepalive_pool = falkordb_storage.get_pool().clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(keepalive_interval_secs));
-            loop {
-                interval.tick().await;
-                match keepalive_pool.get().await {
-                    Ok(mut conn) => {
-                        match redis::cmd("PING").query_async::<_, String>(&mut *conn).await {
-                            Ok(_) => {
-                                tracing::debug!("FalkorDB keep-alive ping successful");
-                            }
-                            Err(e) => {
-                                tracing::warn!("FalkorDB keep-alive ping failed: {}", e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("FalkorDB keep-alive connection failed: {}", e);
-                    }
-                }
-            }
-        });
-    }
-
-    // ── Step 5: Router + middleware ──────────────────────────────────────────
-    let auth_layer = unified_processor_lib::infra::middleware::AxumAuthLayer::new(
-        config.server.auth_middleware_url.clone(),
-    );
-
-    let rate_limit = unified_processor_lib::infra::middleware::AxumRateLimitConfig::default_for_service(10000);
-
-    let app = build_app_router(processor.clone(), auth_layer, rate_limit);
-
-    // ── Step 6: Serve ────────────────────────────────────────────────────────
-    tracing::info!(addr = %addr_str, "Serving");
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Body::from(resp_bytes))?)
 }

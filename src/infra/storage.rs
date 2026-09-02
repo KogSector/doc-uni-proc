@@ -37,7 +37,7 @@ impl PostgresStorage {
         let max_conns = std::env::var("DB_MAX_CONNECTIONS")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(10);
+            .unwrap_or(5);
 
         let pool = PgPoolOptions::new()
             .max_connections(max_conns)
@@ -1663,8 +1663,13 @@ pub async fn create_falkordb_storage(
     // 1. Larger pool to handle concurrent requests during spin-up
     // 2. Longer timeout to accommodate free tier spin-up delays
     // 3. Lazy connections — bb8 does NOT connect at build time
+    let max_conns = std::env::var("FALKORDB_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5);
+
     let pool = Pool::builder()
-        .max_size(32) // Increased from 16 to handle free tier spin-up delays
+        .max_size(max_conns)
         .connection_timeout(std::time::Duration::from_secs(30)) // Increased from 8s to handle free tier spin-up
         .build(manager)
         .await
