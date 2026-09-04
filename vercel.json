@@ -1,22 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/index/src/main.rs": {
-      "runtime": "vercel-rust@4.0.9"
-    },
-    "api/process/src/main.rs": {
-      "runtime": "vercel-rust@4.0.9"
-    },
-    "api/batch/src/main.rs": {
-      "runtime": "vercel-rust@4.0.9"
-    },
-    "api/sync/src/main.rs": {
-      "runtime": "vercel-rust@4.0.9"
-    },
-    "api/status/src/main.rs": {
-      "runtime": "vercel-rust@4.0.9"
-    },
-    "api/local/src/main.rs": {
+    "api/**/*.rs": {
       "runtime": "vercel-rust@4.0.9"
     }
   },

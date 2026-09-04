@@ -1,42 +1,157 @@
-[workspace]
-members = [
-    "src",
-    "api/index",
-    "api/process",
-    "api/batch",
-    "api/sync",
-    "api/status",
-    "api/local",
-]
-resolver = "2"
+[package]
+name = "doc-uni-proc"
+version = "0.1.0"
+edition = "2021"
+description = "Unified content processing service for ConFuse platform - repository AST analysis, document structure analysis, intelligent chunking"
+license = "Proprietary"
+authors = ["ConFuse Team"]
 
-[workspace.dependencies]
-# Shared dependencies for workspace members
-tokio = { version = "1.52.3", features = ["full"] }
-axum = { version = "0.8.9", features = ["macros"] }
-serde = { version = "1.0.228", features = ["derive", "rc"] }
-serde_json = "1.0.150"
+[lib]
+name = "unified_processor_lib"
+path = "src/lib.rs"
+
+# Function binaries
+[[bin]]
+name = "index"
+path = "api/index.rs"
+
+[[bin]]
+name = "process"
+path = "api/process.rs"
+
+[[bin]]
+name = "batch"
+path = "api/batch.rs"
+
+[[bin]]
+name = "sync"
+path = "api/sync.rs"
+
+[[bin]]
+name = "status"
+path = "api/status.rs"
+
+[[bin]]
+name = "local"
+path = "api/local.rs"
+
+[dependencies]
+# Vercel Runtime
 vercel_runtime = "1.1"
+
+# Extracted from confuse-common
+jsonwebtoken = "10.4.0"
+validator = { version = "0.20.0", features = ["derive"] }
+rsa = "0.10.0-rc.18"
+once_cell = "1.21.4"
+tonic = { version = "0.11", features = ["transport", "codegen", "prost"] }
+prost = "0.12"
+prost-types = "0.12"
+
+# Kafka for event streaming
+rdkafka = { version = "0.39.0", features = ["naive-runtime", "cmake-build", "ssl-vendored"] }
+
+# FalkorDB via Redis protocol
+redis = { version = "0.25", features = ["tokio-comp", "tokio-rustls-comp"] }
+bb8-redis = "0.15"
+
+# Web framework
+axum = { version = "0.8.9", features = ["macros"] }
+tokio = { version = "1.52.3", features = ["full"] }
+futures = "0.3.32"
+futures-util = "0.3.32"
 tower = "0.5.3"
 tower-http = { version = "0.7.0", features = ["cors", "trace"] }
-futures = "0.3.32"
+
+# Serialization
+serde = { version = "1.0.228", features = ["derive", "rc"] }
+serde_json = "1.0.150"
+
+
+
+# Database — PostgreSQL for metadata
+sqlx = { version = "0.9.0", features = ["postgres", "runtime-tokio", "tls-rustls", "uuid", "chrono", "macros"] }
+
+# HTTP client (for service calls, Azure Blob REST API, web scraping)
+reqwest = { version = "0.13.4", features = ["json", "stream", "gzip", "brotli"] }
+
+# HTML parsing for web scraping
+scraper = "0.27.0"
+url = "2.5.8"
+
+# Repository cloning — done via subprocess git, no libgit2 needed
+# git2 removed: it pulled in openssl-sys (requires system OpenSSL on Windows)
+
+
+# Configuration
+config = "0.15.24"
+dotenvy = "0.15.7"
+
+# PDF Extraction
+pdf-extract = "0.10.0"
+
+# Utils
+num_cpus = "1.17.0"
 uuid = { version = "1.23.3", features = ["v4", "v5", "v3", "serde"] }
 chrono = { version = "0.4.45", features = ["serde"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+tracing-appender = "0.2.5"
 anyhow = "1.0.102"
 thiserror = "2.0.18"
-sqlx = { version = "0.9.0", features = ["postgres", "runtime-tokio", "tls-rustls", "uuid", "chrono", "macros"] }
-redis = { version = "0.25", features = ["tokio-comp", "tokio-rustls-comp"] }
-bb8-redis = "0.15"
-reqwest = { version = "0.13.4", features = ["json", "stream", "gzip", "brotli"] }
-base64 = "0.22.1"
+regex = "1.12.4"
 bytes = "1.12.0"
 async-trait = "0.1.89"
-regex = "1.12.4"
-unified_processor_lib = { package = "unified-processor-lib", path = "src" }
+base64 = "0.22.1"
+flate2 = "1.0"
+
+# Concurrency
+dashmap = "7.0.0-rc2"
+lazy_static = "1.5.0"
+
+# Removed gRPC
+
+# Graph database is FalkorDB (via Redis protocol)
+
+# Temporary storage
+tempfile = "3.27.0"
+sha2 = "0.11.0"
+petgraph = { version = "0.8.3", features = ["serde-1"] }
+strsim = "0.11.1"
+fnv = "1.0.7"
+walkdir = "2.5.0"
+unicode-normalization = "0.1.25"
+md5 = "0.8.0"
+tree-sitter = "0.26.9"
+tree-sitter-rust = "0.24.2"
+tree-sitter-python = "0.25.0"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-java = "0.23.5"
+tree-sitter-go = "0.25.0"
+tree-sitter-c-sharp = "0.23.5"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-c = "0.24.2"
+tree-sitter-ruby = "0.23.1"
+tree-sitter-php = "0.24.2"
+tree-sitter-swift = "0.7.3"
+tree-sitter-kotlin = { package = "tree-sitter-kotlin-ng", version = "*" }
+tree-sitter-scala = "0.26.0"
+tree-sitter-bash = "0.25.1"
+tree-sitter-html = "0.23.2"
+tree-sitter-md = "0.5.3"
+
+
+[dev-dependencies]
+# Tests moved to ConFuse-test-module (Python API tests)
+
+[build-dependencies]
+# Removed tonic-build as build.rs was deleted and proto files are now static.
 
 [profile.release]
 lto = true
 codegen-units = 1
 opt-level = 3
+
+[features]
+default = []
