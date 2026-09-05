@@ -1,7 +1,7 @@
 # ==============================================================================
-# Unified Processor Service - Dockerfile.vercel
+# Unified Processor Service - Dockerfile
 # ==============================================================================
-# Multi-stage build for Rust + Python hybrid service
+# Multi-stage build for Rust service
 # Port: 8080 (Vercel standard)
 # ==============================================================================
 
@@ -20,8 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libcurl4-openssl-dev \
     zlib1g-dev \
-    python3-dev \
-    python3-pip \
     cmake \
     build-essential \
     librdkafka-dev \
@@ -72,48 +70,12 @@ COPY api/ ./api/
 RUN touch src/lib.rs api/index.rs && cargo build --release
 
 # ==============================================================================
-# Stage 2: Python dependencies
-# ==============================================================================
-FROM debian:bookworm-slim AS python-builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-venv \
-    python3-pip \
-    python3-dev \
-    build-essential \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    libpoppler-dev \
-    poppler-utils \
-    && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache
-
-WORKDIR /app
-
-# Create a virtual environment to safely install Python packages
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-COPY pyproject.toml README.md* ./
-COPY src/utils/ ./src/utils/
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir . && \
-    pip cache purge && \
-    rm -rf /root/.cache/pip
-# ==============================================================================
-# Stage 3: Runtime image
+# Stage 2: Runtime image
 # ==============================================================================
 FROM debian:bookworm-slim AS runtime
 
-# Install ALL shared libraries that the Rust binary links against at runtime.
-# We install python3-dev to guarantee 100% identical shared libraries as the rust-builder stage.
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-dev \
     dumb-init \
     curl \
     ca-certificates \
@@ -132,16 +94,8 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 WORKDIR /app
 
-# Copy Python virtual environment from the builder stage
-COPY --from=python-builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-ENV VIRTUAL_ENV="/opt/venv"
-
 # Copy the compiled Rust binary and set ownership
-COPY --from=rust-builder --chown=appuser:appgroup /app/target/release/doc-uni-proc /usr/local/bin/doc-uni-proc
-
-# Copy application source so pyo3 can import the Python document processor
-COPY --chown=appuser:appgroup src/ ./src/
+COPY --from=rust-builder --chown=appuser:appgroup /app/target/release/index /usr/local/bin/doc-uni-proc
 
 # Ensure the appuser owns the working directory
 RUN chown -R appuser:appgroup /app
